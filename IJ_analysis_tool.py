@@ -1,4 +1,4 @@
-##Honestly "borrowed" some of the code framework from Jens Eriksson's Collective Migration Buddy v2.0 (https://github.com/Oftatkofta/ImageJ-plugins)
+##This toolbox evolved from Jens Eriksson's Collective Migration Buddy v2.0 (https://github.com/Oftatkofta/ImageJ-plugins)
 ##Jorik van Rijn, 2019, Uppsala University
 
 from ij.plugin import ZProjector, Duplicator, HyperStackConverter, ImageCalculator
