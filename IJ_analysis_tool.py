@@ -4,7 +4,7 @@
 from ij.plugin import ZProjector, Duplicator, HyperStackConverter, ImageCalculator
 from ij import WindowManager as WindowManager
 from ij import IJ, ImagePlus, ImageStack
-from ij import IJ as IJ
+from ij import IJ
 from ij.gui import GenericDialog
 import math
 
