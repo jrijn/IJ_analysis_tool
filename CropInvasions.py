@@ -410,17 +410,17 @@ def main():
     results_table = opencsv()
     imp = WindowManager.getCurrentImage()
 
-    # croproi(imp, results_table,
-    #         outdir=outdir, subdirs=subdirs,
-    #         trackindex="TRACK_INDEX",
-    #         trackduration="TRACK_DURATION",
-    #         trackid="TRACK_ID",
-    #         trackxlocation="TRACK_X_LOCATION",
-    #         trackylocation="TRACK_Y_LOCATION",
-    #         trackstart="TRACK_START",
-    #         trackstop="TRACK_STOP",
-    #         add_empty_before=False, add_empty_after=True,
-    #         make_montage=True, roi_x=150, roi_y=150)
+    croproi(imp, results_table,
+            outdir=outdir, subdirs=subdirs,
+            trackindex="TRACK_INDEX",
+            trackduration="TRACK_DURATION",
+            trackid="TRACK_ID",
+            trackxlocation="TRACK_X_LOCATION",
+            trackylocation="TRACK_Y_LOCATION",
+            trackstart="TRACK_START",
+            trackstop="TRACK_STOP",
+            add_empty_before=False, add_empty_after=True,
+            make_montage=True, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
     IJ.log(subdirs[0])
