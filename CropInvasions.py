@@ -3,57 +3,111 @@ from ij.plugin import Duplicator, Concatenator, ChannelSplitter, RGBStackMerge, 
 from ij import WindowManager as WindowManager
 from ij import IJ, ImagePlus, ImageStack
 from ij.measure import ResultsTable as ResultsTable
-# from ij.process import ImageProcessor as ip
-# from ij.gui import GenericDialog, ImageWindow
 import os
 
-# Declare variables
+# Declare global variables
 global outdir
-global dir_montage
-global dir_empty
+global dir1
+global dir2
 
 
-# Prepare the directory tree for the output files.
-def preparedir():
-    global outdir
-    global dir_montage
-    global dir_empty
+def preparedir(outdir, dir1="output1", dir2="output2"):
+    """Prepares input and output directories of this module.
+
+    Simple function which prepares the output directory and input .csv file.
+    If the subfolders ./montage and ./with_empty_stacks do not exist its makes them.
+
+    Args:
+        outdir: Path of the chosen output directory.
+        dir1: Name of the first output subdirectory. Defaults to 'output1'.
+        dir2: Name of the first output subdirectory. Defaults to 'output2'.
+
+    Returns:
+        A list containing the path strings of both output directories:
+        [path_of_output1, path_of_output2]
+    """
 
     # First ask for an output directory and the location of the 'Track statistics.csv' Trackmate output.
-    outdir = IJ.getDirectory("output directory")
-    csv = IJ.getFilePath("Choose the Trackmate 'Track Statistics' results file")
+    # outdir = IJ.getDirectory("output directory")
 
-    # Also create the output subdirectory paths.
-    dir_montage = os.path.join(outdir, "montage")
-    dir_empty = os.path.join(outdir, "with_empty_stacks")
-    if not os.path.isdir(dir_montage):
-        os.mkdir(dir_montage)
-    if not os.path.isdir(dir_empty):
-        os.mkdir(dir_empty)
+    # Also create the output subdirectory paths, if they do not exist already.
+    out1 = os.path.join(outdir, dir1)
+    out2 = os.path.join(outdir, dir2)
+    if not os.path.isdir(out1):
+        os.mkdir(out1)
+    if not os.path.isdir(out2):
+        os.mkdir(out2)
+
+    out = [out1, out2]
+    return out
+
+
+def opencsv():
+    """Simply imports .csv file in ImageJ.
+
+    Ask the user for the location of a .csv file.
+
+    Returns:
+        A ResultsTable object from the input file.
+    """
+
+    csv = IJ.getFilePath("Choose a .csv file")
 
     # Open the csv file and return it as ResultsTable object.
     try:
         res = ResultsTable.open(csv)
+        return res
     except:
         IJ.log("Oops, 'Track statistics' file couldn't open")
-    else:
-        return res
 
 
-# The function interpreting a .csv file and looping through the Trackmate tracks to extract cropped hyperstacks.
-# There's a lot going on, might want to try and split this up in separate functions.
-def croproi(imp, results_table, add_empty_before=False, add_empty_after=False,
+# TODO: There's a lot going on, might want to try and split this up in separate functions.
+def croproi(imp, results_table,
+            outdir, subdirs,
+            trackindex="TRACK_INDEX",
+            trackduration="TRACK_DURATION",
+            trackid="TRACK_ID",
+            trackxlocation="TRACK_X_LOCATION",
+            trackylocation="TRACK_Y_LOCATION",
+            trackstart="TRACK_START",
+            trackstop="TRACK_STOP",
+            add_empty_before=False, add_empty_after=False,
             make_montage=False, roi_x=150, roi_y=150):
-    global outdir
-    global dir_empty
-    global dir_montage
+    """Function cropping ROIs from an ImagePlus stack based on a ResultsTable object.
+
+    This function crops square ROIs from a hyperstack based on locations defined in the ResultsTable.
+    The ResultsTable should, however make sense. The following headings are required:
+
+    "TRACK_INDEX", "TRACK_DURATION", "TRACK_ID", "TRACK_X_LOCATION", "TRACK_Y_LOCATION", "TRACK_START", "TRACK_STOP"
+
+    Args:
+        imp: An ImagePlus hyperstack (timelapse).
+        results_table: A ResultsTable object with the proper column names.
+        outdir: The primary output directory.
+        subdirs: A list of two paths for the output of this funcion. ([path_of_output1, path_of_output2])
+        trackindex:
+        trackduration:
+        trackid:
+        trackxlocation:
+        trackylocation:
+        trackstart:
+        trackstop:
+        add_empty_before: Add empty frames before to make all output stacks the same lenght.
+        add_empty_after: Add empty frames after to make all output stacks the same lenght.
+        make_montage: Make a montage of each substack and save to output1
+        roi_x: Width of the ROI.
+        roi_y: Height of the ROI.
+    """
+
+    output1 = subdirs[0]
+    output2 = subdirs[1]
 
     # Extract the column index of 'TRACK_INDEX' from the csv file.
     # The column name cannot be used directly to extract the column values.
     # The 'TRACK_INDEX' is used to refer to the frame's row numbers, we'll loop through these.
-    track_idx = results_table.getColumnIndex("TRACK_INDEX")
+    track_idx = results_table.getColumnIndex(trackindex)
     tracks = results_table.getColumn(track_idx).tolist()
-    duration_idx = results_table.getColumnIndex("TRACK_DURATION")
+    duration_idx = results_table.getColumnIndex(trackduration)
     duration = results_table.getColumn(duration_idx).tolist()
     IJ.log("[1] {} \n[2] {}\n[3] ".format(track_idx, tracks))
 
@@ -61,26 +115,21 @@ def croproi(imp, results_table, add_empty_before=False, add_empty_after=False,
     for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
         # Extract all needed row values.
         idx = int(i)
-        i_id = int(results_table.getValue("TRACK_ID", idx))
-        i_x = int(results_table.getValue("TRACK_X_LOCATION", idx) * 5.988)  # fix for calibration
-        i_y = int(results_table.getValue("TRACK_Y_LOCATION", idx) * 5.988)  # fix for calibration
-        i_start = int(results_table.getValue("TRACK_START", idx) / 15)
-        i_stop = int(results_table.getValue("TRACK_STOP", idx) / 15)
-        i_duration = int(results_table.getValue("TRACK_DURATION", idx) / 15)
+        i_id = int(results_table.getValue(trackid, idx))
+        i_x = int(results_table.getValue(trackxlocation, idx) * 5.988)  # fix for calibration
+        i_y = int(results_table.getValue(trackylocation, idx) * 5.988)  # fix for calibration
+        i_start = int(results_table.getValue(trackstart, idx) / 15)
+        i_stop = int(results_table.getValue(trackstop, idx) / 15)
+        i_duration = int(results_table.getValue(trackduration, idx) / 15)
         i_fill_duration = int(max(duration) / 15 - i_duration)
         width, height, nChannels, nSlices, nFrames = imp.getDimensions()
-
-        # Quick sanity check, and this provides some output to be sure the script is still running.
-        # IJ.log("In readcsv(): width: {}, height: {}, nChannels: {}, nSlices: {}, nFrames: {}"
-        #        "x: {}, y {}, start {}, stop {}"
-        #        "Cropping image...".format(width, height, nChannels, nSlices, nFrames, i_x, i_y, i_start, i_stop))
 
         # Now set an ROI according to the track's xy position in the hyperstack.
         imp.setRoi(i_x - roi_x / 2, i_y - roi_y / 2,  # upper left x, upper left y
                    roi_x, roi_y)  # roi x dimension, roi y dimension
 
         # And then crop (duplicate, actually) this ROI for the track's time duration.
-        IJ.log("\nCropping image with TRACK_ID: {}".format(i_id))
+        IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(idx, max(tracks)))
         imp2 = Duplicator().run(imp,
                                 1,  # firstC
                                 nChannels,  # lastC
@@ -100,7 +149,7 @@ def croproi(imp, results_table, add_empty_before=False, add_empty_after=False,
             IJ.log("Adding empty frames before and after...")
             imp_empty = concatenatestack(imp2, i_start, nFrames - i_stop)
             if imp_empty:
-                outfile3 = os.path.join(dir_empty, "TRACK_ID_{}.tif".format(i_id))
+                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
                 IJ.saveAs(imp_empty, "Tiff", outfile3)
             else:
                 # Let's us know if this concatenation fails.
@@ -118,7 +167,7 @@ def croproi(imp, results_table, add_empty_before=False, add_empty_after=False,
                 IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
 
             if imp_empty:
-                outfile3 = os.path.join(dir_empty, "TRACK_ID_{}.tif".format(i_id))
+                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
                 IJ.saveAs(imp_empty, "Tiff", outfile3)
             else:
                 # Let's us know if this concatenation fails.
@@ -136,7 +185,7 @@ def croproi(imp, results_table, add_empty_before=False, add_empty_after=False,
                 IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
 
             if imp_empty:
-                outfile3 = os.path.join(dir_empty, "TRACK_ID_{}.tif".format(i_id))
+                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
                 IJ.saveAs(imp_empty, "Tiff", outfile3)
             else:
                 # Let's us know if this concatenation fails.
@@ -146,14 +195,25 @@ def croproi(imp, results_table, add_empty_before=False, add_empty_after=False,
         if make_montage:
             IJ.log("Making montage...")
             mont = montage(imp_empty)
-            outfile2 = os.path.join(dir_montage, "TRACK_ID_{}.tif".format(i_id))
+            outfile2 = os.path.join(output2, "TRACK_ID_{}.tif".format(i_id))
             IJ.saveAs(mont, "Tiff", outfile2)
 
 
-# This function creates an empty stack with black images, with the same dimensions of input image 'imp'.
-# The argument inframes allows one to set the number of frames the stack should have. This defaults to the
-# input frame depth through an if statement.
 def emptystack(imp, inframes=0):
+    """Create an empty stack with the dimensions of imp.
+
+    This function creates an empty stack with black images, with the same dimensions of input image 'imp'.
+    The argument inframes allows one to set the number of frames the stack should have. This defaults to the
+    input frame depth through an if statement.
+
+    Args:
+        imp: ImageStack object.
+        inframes: The total framedepth of the returned stack.
+
+    Returns:
+        An ImagePlus hyperstack object.
+    """
+
     # Start by reading the calibration and dimensions of the input stack to correspond to the output stack.
     cal = imp.getCalibration()
     width, height, nChannels, nSlices, nFrames = imp.getDimensions()
@@ -271,13 +331,14 @@ def _readdirfiles(directory):
     dirfiles = []
 
     for file in dir:
-        path = os.path.join(directory, file)
-        stack = ImagePlus(path)
-        stack = HyperStackConverter().toHyperStack(stack,
-                                                   2,  # channels
-                                                   1,  # slices
-                                                   stack.getNFrames())  # frames
-        dirfiles.append(stack)
+        if file.endswith('.tif') or file.endswith('tiff'):
+            path = os.path.join(directory, file)
+            stack = ImagePlus(path)
+            stack = HyperStackConverter().toHyperStack(stack,
+                                                       2,  # channels
+                                                       1,  # slices
+                                                       stack.getNFrames())  # frames
+            dirfiles.append(stack)
 
     return dirfiles
 
@@ -287,7 +348,6 @@ def _listsplitchannels(collection):
     coll_c2 = []
 
     for stack in collection:
-        IJ.log(str(stack))
         c1, c2 = ChannelSplitter().split(stack)
         coll_c1.append(c1.getImageStack())
         coll_c2.append(c2.getImageStack())
@@ -317,6 +377,7 @@ def _vercombine(imp_collection):
 
 # Only handles input files with 2 channels
 def combinestacks(directory, x_width=5):
+    IJ.log("Combining stacks...")
     files = _readdirfiles(directory)
     groups = chunks(files, x_width)
 
@@ -341,13 +402,30 @@ def combinestacks(directory, x_width=5):
 
 # The main loop, call wanted functions.
 def main():
+    # Get the wanted output directory and prepare subdirectories for output.
+    outdir = IJ.getDirectory("output directory")
+    subdirs = preparedir(outdir, dir1="with_empty_stacks", dir2="montage")
+
+    # Open the 'Track statistics.csv' input file and run main crop function.
+    results_table = opencsv()
     imp = WindowManager.getCurrentImage()
-    # results = preparedir()
-    # croproi(imp, results, add_empty_before=False, add_empty_after=True,
+
+    # croproi(imp, results_table,
+    #         outdir=outdir, subdirs=subdirs,
+    #         trackindex="TRACK_INDEX",
+    #         trackduration="TRACK_DURATION",
+    #         trackid="TRACK_ID",
+    #         trackxlocation="TRACK_X_LOCATION",
+    #         trackylocation="TRACK_Y_LOCATION",
+    #         trackstart="TRACK_START",
+    #         trackstop="TRACK_STOP",
+    #         add_empty_before=False, add_empty_after=True,
     #         make_montage=True, roi_x=150, roi_y=150)
-    testdir = IJ.getDirectory("output directory")
-    combinestacks(testdir)
+
+    # Combine all output stacks into one movie.
+    IJ.log(subdirs[0])
+    combinestacks(subdirs[0])
 
 
-# Excecute main()
+# Execute main()
 main()
