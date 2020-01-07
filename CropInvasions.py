@@ -5,11 +5,6 @@ from ij import IJ, ImagePlus, ImageStack
 from ij.measure import ResultsTable as ResultsTable
 import os
 
-# Declare global variables
-global outdir
-global dir1
-global dir2
-
 
 def preparedir(outdir, dir1="output1", dir2="output2"):
     """Prepares input and output directories of this module.
@@ -58,7 +53,7 @@ def opencsv():
         res = ResultsTable.open(csv)
         return res
     except:
-        IJ.log("Oops, 'Track statistics' file couldn't open")
+        IJ.log("Oops, the .csv file could not open")
 
 
 # TODO: There's a lot going on, might want to try and split this up in separate functions.
@@ -112,7 +107,7 @@ def croproi(imp, results_table,
     IJ.log("[1] {} \n[2] {}\n[3] ".format(track_idx, tracks))
 
     # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack!
-    for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
+    for i in range(0, 5):  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
         # Extract all needed row values.
         idx = int(i)
         i_id = int(results_table.getValue(trackid, idx))
@@ -129,7 +124,7 @@ def croproi(imp, results_table,
                    roi_x, roi_y)  # roi x dimension, roi y dimension
 
         # And then crop (duplicate, actually) this ROI for the track's time duration.
-        IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(idx, max(tracks)))
+        IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(idx, int(max(tracks))))
         imp2 = Duplicator().run(imp,
                                 1,  # firstC
                                 nChannels,  # lastC
@@ -149,6 +144,9 @@ def croproi(imp, results_table,
             IJ.log("Adding empty frames before and after...")
             imp_empty = concatenatestack(imp2, i_start, nFrames - i_stop)
             if imp_empty:
+                IJ.run(imp_empty, "Label...",
+                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
+                                                                                                               nFrames))
                 outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
                 IJ.saveAs(imp_empty, "Tiff", outfile3)
             else:
@@ -167,6 +165,9 @@ def croproi(imp, results_table,
                 IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
 
             if imp_empty:
+                IJ.run(imp_empty, "Label...",
+                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
+                                                                                                               nFrames))
                 outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
                 IJ.saveAs(imp_empty, "Tiff", outfile3)
             else:
@@ -185,6 +186,9 @@ def croproi(imp, results_table,
                 IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
 
             if imp_empty:
+                IJ.run(imp_empty, "Label...",
+                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
+                                                                                                               nFrames))
                 outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
                 IJ.saveAs(imp_empty, "Tiff", outfile3)
             else:
@@ -199,7 +203,7 @@ def croproi(imp, results_table,
             IJ.saveAs(mont, "Tiff", outfile2)
 
 
-def emptystack(imp, inframes=0):
+def _emptystack(imp, inframes=0):
     """Create an empty stack with the dimensions of imp.
 
     This function creates an empty stack with black images, with the same dimensions of input image 'imp'.
@@ -207,8 +211,8 @@ def emptystack(imp, inframes=0):
     input frame depth through an if statement.
 
     Args:
-        imp: ImageStack object.
-        inframes: The total framedepth of the returned stack.
+        imp: ImagePlus hyperstack object.
+        inframes: The total framedepth of the returned stack. Default is 0.
 
     Returns:
         An ImagePlus hyperstack object.
@@ -235,42 +239,51 @@ def emptystack(imp, inframes=0):
     return outstack
 
 
-# This function is used to append a stack of empty frames before and after the input stack.
-# imp is the input stack, frames_before determines the number of frames to be appended in front,
-# frames_after determines the number of frames to be appended at the end.
 def concatenatestack(imp, frames_before, frames_after):
+    """Append empty frames (timepoints) before and after an input stack.
+
+    This function is used to append a stack of empty frames before and after the input stack.
+    imp is the input stack, frames_before determines the number of frames to be appended in front,
+    frames_after determines the number of frames to be appended at the end.
+
+    Args:
+        imp: ImagePlus hyperstack object.
+        frames_before: the number of frames to be appended before.
+        frames_after: the number of frames to be appended after.
+
+    Returns:
+        An ImagePlus hyperstack object.
+    """
+
     cal = imp.getCalibration()
     imp_c1, imp_c2 = ChannelSplitter().split(imp)
-
-    # IJ.log("""in concatenatestack(): frames_before: {}, frames_after: {}
-    #        """.format(frames_before, frames_after))
 
     # If frames_before is 0, skip this step to prevent creation of an empty image
     # Also, split channels for correct concatenation in following step.
     if frames_before != 0:
-        before = emptystack(imp, frames_before)
+        before = _emptystack(imp, frames_before)
         before.setCalibration(cal)
         before_c1, before_c2 = ChannelSplitter().split(before)
 
     # If frames_after is 0, skip this step to prevent creation of an empty image.
     # Also, split channels for correct concatenation in following step.
     if frames_after != 0:
-        after = emptystack(imp, frames_after)
+        after = _emptystack(imp, frames_after)
         after.setCalibration(cal)
         after_c1, after_c2 = ChannelSplitter().split(after)
 
     # Concatenate existing stacks and merge channels back to one file.
-    # Start with the condition when emptystack() has to be appended before and after imp.
+    # Start with the condition when _emptystack() has to be appended before and after imp.
     if frames_before != 0 and frames_after != 0:
         # IJ.log ("In concatenatestack(): reached frames_before != 0 & frames_after != 0")
         concat_c1 = Concatenator().run(before_c1, imp_c1, after_c1)
         concat_c2 = Concatenator().run(before_c2, imp_c2, after_c2)
-    # Following the condition when emptystack() has to be appended after imp alone.
+    # Following the condition when _emptystack() has to be appended after imp alone.
     elif frames_before == 0 and frames_after != 0:
         # IJ.log ("In concatenatestack(): reached frames_before == 0 & frames_after != 0")
         concat_c1 = Concatenator().run(imp_c1, after_c1)
         concat_c2 = Concatenator().run(imp_c2, after_c2)
-    # Following the condition when emptystack() has to be appended before imp alone.
+    # Following the condition when _emptystack() has to be appended before imp alone.
     elif frames_before != 0 and frames_after == 0:
         # IJ.log ("In concatenatestack(): reached frames_before != 0 & frames_after == 0")
         concat_c1 = Concatenator().run(before_c1, imp_c1)
@@ -287,6 +300,17 @@ def concatenatestack(imp, frames_before, frames_after):
 
 # Simple function making a montage of the image hyperstack passed as argument
 def montage(imp):
+    """Makes a montage of the input hyperstack.
+
+    Simple function making a montage of the image hyperstack passed as argument.
+
+    Args:
+        imp: ImagePlus hyperstack object.
+
+    Returns:
+        An ImagePlus hyperstack object.
+    """
+
     width, height, nChannels, nSlices, nFrames = imp.getDimensions()
     ch1, ch2 = ChannelSplitter().split(imp)
     ch1_mont = MontageMaker().makeMontage2(ch1,
@@ -315,6 +339,18 @@ def montage(imp):
 
 
 def chunks(seq, num):
+    """Function which splits a list in parts.
+
+    This function takes a list 'seq' and returns it in more or less equal parts of length 'num' as a list of lists.
+
+    Args:
+        seq: A list, at least longer than num.
+        num: the division factor to create sublists.
+
+    Returns:
+        A list of sublists.
+    """
+
     avg = len(seq) / float(num)
     out = []
     last = 0.0
@@ -326,17 +362,30 @@ def chunks(seq, num):
     return out
 
 
-def _readdirfiles(directory):
+def _readdirfiles(directory, nChannels=2, nSlices=1):
+    """Import tiff files from a directory.
+
+    This function reads all .tiff files from a directory and returns them as a list of hyperstacks.
+
+    Args:
+        directory: The path to a directory containing the tiff files.
+        nChannels: The number of channels sequentially contained in the stack. Defaults to 2.
+        nSlices: The number of slices sequentially contained in the stack. Defaults to 1.
+
+    Returns:
+        A list of hyperstacks.
+    """
+
     dir = os.listdir(directory)
     dirfiles = []
 
     for file in dir:
-        if file.endswith('.tif') or file.endswith('tiff'):
+        if file.endswith('.tif') or file.endswith('.tiff'):
             path = os.path.join(directory, file)
             stack = ImagePlus(path)
             stack = HyperStackConverter().toHyperStack(stack,
-                                                       2,  # channels
-                                                       1,  # slices
+                                                       nChannels,  # channels
+                                                       nSlices,  # slices
                                                        stack.getNFrames())  # frames
             dirfiles.append(stack)
 
@@ -344,6 +393,17 @@ def _readdirfiles(directory):
 
 
 def _listsplitchannels(collection):
+    """Split channels of a list of hyperstacks.
+
+    This function splits a list of 2 channel hyperstacks in two separate lists per channel.
+
+    Args:
+        collection: A list of hyperstacks.
+
+    Returns:
+        One list of hyperstacks per channel.
+    """
+
     coll_c1 = []
     coll_c2 = []
 
@@ -356,6 +416,15 @@ def _listsplitchannels(collection):
 
 
 def _horcombine(imp_collection):
+    """Combine a list of stacks with the same dimensions horizontally.
+
+    Args:
+        imp_collection: A list of stacks.
+
+    Returns:
+        A horizontally combined stack of the input images.
+    """
+
     comb = imp_collection[0]
 
     for imp in imp_collection:
@@ -366,6 +435,15 @@ def _horcombine(imp_collection):
 
 
 def _vercombine(imp_collection):
+    """Combine a list of stacks with the same dimensions vertically.
+
+    Args:
+        imp_collection: A list of stacks.
+
+    Returns:
+        A vertically combined stack of the input images.
+    """
+
     comb = imp_collection[0]
 
     for imp in imp_collection:
@@ -375,11 +453,21 @@ def _vercombine(imp_collection):
     return comb
 
 
-# Only handles input files with 2 channels
-def combinestacks(directory, x_width=5):
-    IJ.log("Combining stacks...")
+# TODO: Currently only handles input files with 2 channels. Fix if broader application is needed.
+def combinestacks(directory, height=5):
+    """Combine all tiff stacks in a directory to a panel.
+
+    Args:
+        directory: Path to a directory containing a collection of .tiff files.
+        height: The height of the panel (integer). Defaults to 5. The width is spaces automatically.
+
+    Returns:
+        A combined stack of the input images.
+    """
+
+    IJ.log("\nCombining stacks...")
     files = _readdirfiles(directory)
-    groups = chunks(files, x_width)
+    groups = chunks(files, height)
 
     horiz = []
     for i in range(0, len(groups)):
@@ -420,10 +508,9 @@ def main():
             trackstart="TRACK_START",
             trackstop="TRACK_STOP",
             add_empty_before=False, add_empty_after=True,
-            make_montage=True, roi_x=150, roi_y=150)
+            make_montage=False, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
-    IJ.log(subdirs[0])
     combinestacks(subdirs[0])
 
 
