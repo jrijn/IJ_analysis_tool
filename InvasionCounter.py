@@ -1,5 +1,5 @@
 from ij.plugin import Duplicator, Concatenator, ChannelSplitter, RGBStackMerge, StackCombiner, MontageMaker, \
-    StackCombiner, HyperStackConverter, Thresholder
+    StackCombiner, HyperStackConverter, Thresholder, ZProjector
 from ij import WindowManager as wm
 from ij.plugin.filter import BackgroundSubtracter, EDM
 from ij import IJ, ImagePlus, ImageStack
@@ -31,6 +31,17 @@ def countbacteria(imp):
     return c2
 
 
+def countruffles(imp):
+    c1, c2, c3 = ChannelSplitter.split(imp)
+    IJ.run(c3, "Subtract Background...", "rolling=50")
+    IJ.setAutoThreshold(c3, "RenyiEntropy dark")
+    IJ.run(c3, "Convert to Mask", "")
+    IJ.run(c3, "Set Measurements...", "area mean shape display label redirect=None decimal=3")
+    IJ.run(c3, "Analyze Particles...", "size=1-30.00 circularity=0.20-1.00 show=Overlay display exclude summarize "
+                                       "add")
+    return c3
+
+
 def readdirfiles(directory, nChannels=2, nSlices=1):
     """Import tiff files from a directory.
     This function reads all .tiff files from a directory and returns them as a list of hyperstacks.
@@ -57,20 +68,26 @@ def readdirfiles(directory, nChannels=2, nSlices=1):
 
     return dirfiles
 
+
 def saveresults(dir, name):
     outfile = os.path.join(dir, "{}.csv".format(name))
     res = ResultsTable.getResultsTable()
     ResultsTable.save(res, outfile)
     ResultsTable.reset(res)
 
+
 def main():
     indir = IJ.getDirectory("input directory")
+    outdir = IJ.getDirectory(".csv output directory")
     nucdir = os.path.join(indir, "nuclei")
     bacdir = os.path.join(indir, "bacteria")
+    rufdir = os.path.join(indir, "ruffles")
     if not os.path.isdir(nucdir):
         os.mkdir(nucdir)
     if not os.path.isdir(bacdir):
         os.mkdir(bacdir)
+    if not os.path.isdir(rufdir):
+        os.mkdir(rufdir)
 
     # Collect all .tif images in the input directory
     images = readdirfiles(indir,
@@ -81,6 +98,7 @@ def main():
     IJ.log("Counting nuclei...")
     for image in images:
         IJ.log(" - Current image: {}".format(image))
+        # image = ZProjector.run(image, "max")
         out = countnuclei(image)
         name = image.getTitle()
         outfile = os.path.join(nucdir, "threshold_{}".format(name))
@@ -89,19 +107,36 @@ def main():
     # Save the ResultsTable object
     idx = name.find("MMStack")
     condition = name[:idx]
-    saveresults(bacdir, condition)
+    csvname = "nuc_{}".format(condition)
+    saveresults(outdir, csvname)
 
     # Count bacteria for every image in the folder
     IJ.log("Counting bacteria...")
     for image in images:
         IJ.log(" - Current image: {}".format(image))
+        # image = ZProjector.run(image, "max")
         out = countbacteria(image)
         name = image.getTitle()
         outfile = os.path.join(bacdir, "threshold_{}".format(name))
         IJ.saveAs(out, "Tiff", outfile)
 
     # Save the ResultsTable object
-    saveresults(bacdir, condition)
+    csvname = "bac_{}".format(condition)
+    saveresults(outdir, csvname)
+
+    # Count ruffles for every image in the folder
+    IJ.log("Counting ruffles...")
+    for image in images:
+        IJ.log(" - Current image: {}".format(image))
+        # image = ZProjector.run(image, "max")
+        out = countruffles(image)
+        name = image.getTitle()
+        outfile = os.path.join(rufdir, "threshold_{}".format(name))
+        IJ.saveAs(out, "Tiff", outfile)
+
+    # Save the ResultsTable object
+    csvname = "ruf_{}".format(condition)
+    saveresults(outdir, csvname)
 
 
 main()
