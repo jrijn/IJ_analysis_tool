@@ -15,7 +15,7 @@ def countnuclei(imp):
     IJ.run(c1, "Convert to Mask", "")
     IJ.run(c1, "Dilate", "")
     IJ.run(c1, "Watershed", "")
-    IJ.run(c1, "Set Measurements...", "area mean shape display label redirect=None decimal=3")
+    IJ.run(c1, "Set Measurements...", "area mean shape centroid display label redirect=None decimal=3")
     IJ.run(c1, "Analyze Particles...", "size=0-infinity display exclude summarize add")
     return c1
 
@@ -25,7 +25,7 @@ def countbacteria(imp):
     IJ.run(c2, "Subtract Background...", "rolling=50")
     IJ.setAutoThreshold(c2, "RenyiEntropy dark")
     IJ.run(c2, "Convert to Mask", "")
-    IJ.run(c2, "Set Measurements...", "area mean shape display label redirect=None decimal=3")
+    IJ.run(c2, "Set Measurements...", "area mean shape centroid display label redirect=None decimal=3")
     IJ.run(c2, "Analyze Particles...", "size=0.50-10.00 circularity=0.30-1.00 show=Overlay display exclude summarize "
                                        "add")
     return c2
@@ -36,7 +36,7 @@ def countruffles(imp):
     IJ.run(c3, "Subtract Background...", "rolling=50")
     IJ.setAutoThreshold(c3, "RenyiEntropy dark")
     IJ.run(c3, "Convert to Mask", "")
-    IJ.run(c3, "Set Measurements...", "area mean shape display label redirect=None decimal=3")
+    IJ.run(c3, "Set Measurements...", "area mean shape centroid display label redirect=None decimal=3")
     IJ.run(c3, "Analyze Particles...", "size=1-30.00 circularity=0.20-1.00 show=Overlay display exclude summarize "
                                        "add")
     return c3
@@ -53,20 +53,25 @@ def readdirfiles(directory, nChannels=2, nSlices=1):
         A list of hyperstacks.
     """
 
-    dir = os.listdir(directory)
-    dirfiles = []
+    # Get the list of all files in directory tree at given path
+    listOfFiles = list()
+    for (dirpath, dirnames, filenames) in os.walk(directory):
+        listOfFiles += [os.path.join(dirpath, file) for file in filenames]
+    #
+    # dir = os.listdir(directory)
+    # dirfiles = []
+    #
+    # for file in listOfFiles:
+    #     if file.endswith('.tif') or file.endswith('.tiff'):
+    #         # path = os.path.join(directory, file)
+    #         stack = ImagePlus(file)
+    #         stack = HyperStackConverter().toHyperStack(stack,
+    #                                                    nChannels,  # channels
+    #                                                    nSlices,  # slices
+    #                                                    stack.getNFrames())  # frames
+    #         dirfiles.append(stack)
 
-    for file in dir:
-        if file.endswith('.tif') or file.endswith('.tiff'):
-            path = os.path.join(directory, file)
-            stack = ImagePlus(path)
-            stack = HyperStackConverter().toHyperStack(stack,
-                                                       nChannels,  # channels
-                                                       nSlices,  # slices
-                                                       stack.getNFrames())  # frames
-            dirfiles.append(stack)
-
-    return dirfiles
+    return listOfFiles
 
 
 def saveresults(dir, name):
@@ -79,9 +84,9 @@ def saveresults(dir, name):
 def main():
     indir = IJ.getDirectory("input directory")
     outdir = IJ.getDirectory(".csv output directory")
-    nucdir = os.path.join(indir, "nuclei")
-    bacdir = os.path.join(indir, "bacteria")
-    rufdir = os.path.join(indir, "ruffles")
+    nucdir = os.path.join(outdir, "nuclei")
+    bacdir = os.path.join(outdir, "bacteria")
+    rufdir = os.path.join(outdir, "ruffles")
     if not os.path.isdir(nucdir):
         os.mkdir(nucdir)
     if not os.path.isdir(bacdir):
@@ -90,19 +95,27 @@ def main():
         os.mkdir(rufdir)
 
     # Collect all .tif images in the input directory
-    images = readdirfiles(indir,
+    files = readdirfiles(indir,
                           nChannels=3,
-                          nSlices=1)
+                          nSlices=7)
 
     # Count nuclei for every image in the folder
     IJ.log("Counting nuclei...")
-    for image in images:
-        IJ.log(" - Current image: {}".format(image))
-        # image = ZProjector.run(image, "max")
-        out = countnuclei(image)
-        name = image.getTitle()
-        outfile = os.path.join(nucdir, "threshold_{}".format(name))
-        IJ.saveAs(out, "Tiff", outfile)
+    for file in files:
+        if file.endswith('.tif') or file.endswith('.tiff'):
+            # path = os.path.join(directory, file)
+            image = ImagePlus(file)
+            image = HyperStackConverter().toHyperStack(image,
+                                                       3,  # channels
+                                                       7,  # slices
+                                                       1)  # frames
+
+            IJ.log(" - Current image: {}".format(image))
+            image = ZProjector.run(image, "max")
+            out = countnuclei(image)
+            name = image.getTitle()
+            outfile = os.path.join(nucdir, "threshold_{}".format(name))
+            IJ.saveAs(out, "Tiff", outfile)
 
     # Save the ResultsTable object
     idx = name.find("MMStack")
@@ -112,13 +125,21 @@ def main():
 
     # Count bacteria for every image in the folder
     IJ.log("Counting bacteria...")
-    for image in images:
-        IJ.log(" - Current image: {}".format(image))
-        # image = ZProjector.run(image, "max")
-        out = countbacteria(image)
-        name = image.getTitle()
-        outfile = os.path.join(bacdir, "threshold_{}".format(name))
-        IJ.saveAs(out, "Tiff", outfile)
+    for file in files:
+        if file.endswith('.tif') or file.endswith('.tiff'):
+            # path = os.path.join(directory, file)
+            image = ImagePlus(file)
+            image = HyperStackConverter().toHyperStack(image,
+                                                       3,  # channels
+                                                       7,  # slices
+                                                       1)  # frames
+
+            IJ.log(" - Current image: {}".format(image))
+            image = ZProjector.run(image, "max")
+            out = countbacteria(image)
+            name = image.getTitle()
+            outfile = os.path.join(bacdir, "threshold_{}".format(name))
+            IJ.saveAs(out, "Tiff", outfile)
 
     # Save the ResultsTable object
     csvname = "bac_{}".format(condition)
@@ -126,13 +147,21 @@ def main():
 
     # Count ruffles for every image in the folder
     IJ.log("Counting ruffles...")
-    for image in images:
-        IJ.log(" - Current image: {}".format(image))
-        # image = ZProjector.run(image, "max")
-        out = countruffles(image)
-        name = image.getTitle()
-        outfile = os.path.join(rufdir, "threshold_{}".format(name))
-        IJ.saveAs(out, "Tiff", outfile)
+    for file in files:
+        if file.endswith('.tif') or file.endswith('.tiff'):
+            # path = os.path.join(directory, file)
+            image = ImagePlus(file)
+            image = HyperStackConverter().toHyperStack(image,
+                                                       3,  # channels
+                                                       7,  # slices
+                                                       1)  # frames
+
+            IJ.log(" - Current image: {}".format(image))
+            image = ZProjector.run(image, "max")
+            out = countruffles(image)
+            name = image.getTitle()
+            outfile = os.path.join(rufdir, "threshold_{}".format(name))
+            IJ.saveAs(out, "Tiff", outfile)
 
     # Save the ResultsTable object
     csvname = "ruf_{}".format(condition)
