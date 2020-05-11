@@ -1,72 +1,29 @@
 import ij.IJ as IJ
 import ij.ImagePlus as ImagePlus
-import ij.ImageStack as ImageStack
-import ij.WindowManager as wm
+# import ij.ImageStack as ImageStack
+# import ij.WindowManager as wm
 
 import ij.measure.ResultsTable as ResultsTable
 import ij.measure.Measurements as Measurements
 
-import ij.plugin.Duplicator as Duplicator
-import ij.plugin.Concatenator as Concatenator
 import ij.plugin.ChannelSplitter as ChannelSplitter
-import ij.plugin.RGBStackMerge as RGBStackMerge
-import ij.plugin.StackCombiner as StackCombiner
-import ij.plugin.MontageMaker as MontageMaker
-import ij.plugin.StackCombiner as StackCombiner
 import ij.plugin.HyperStackConverter as HyperStackConverter
-import ij.plugin.Thresholder as Thresholder
 import ij.plugin.ZProjector as ZProjector
+# import ij.plugin.RGBStackMerge as RGBStackMerge
+# import ij.plugin.StackCombiner as StackCombiner
+# import ij.plugin.MontageMaker as MontageMaker
+# import ij.plugin.StackCombiner as StackCombiner
+# import ij.plugin.Duplicator as Duplicator
+# import ij.plugin.Concatenator as Concatenator
 
-import ij.plugin.filter.BackgroundSubtracter as BackgroundSubtracter
-import ij.plugin.filter.EDM as EDM
+# import ij.plugin.Thresholder as Thresholder
+
 import ij.plugin.filter.ParticleAnalyzer as ParticleAnalyzer
+# import ij.plugin.filter.BackgroundSubtracter as BackgroundSubtracter
+# import ij.plugin.filter.EDM as EDM
 
-import math
 import os
-
-
-def countnuclei(imp):
-    c1, c2, c3 = ChannelSplitter.split(imp)
-    IJ.run(c1, "Subtract Background...", "rolling=50")
-    IJ.setAutoThreshold(c1, "Triangle dark")
-    IJ.run(c1, "Convert to Mask", "")
-    IJ.run(c1, "Dilate", "")
-    IJ.run(c1, "Watershed", "")
-    IJ.run(c1, "Set Measurements...", "area mean shape centroid display label redirect=None decimal=3")
-    IJ.run(c1, "Analyze Particles...", "size=0-infinity display exclude summarize add")
-    return c1
-
-
-def countbacteria(imp):
-    c1, c2, c3 = ChannelSplitter.split(imp)
-    IJ.run(c2, "Subtract Background...", "rolling=50")
-    IJ.setAutoThreshold(c2, "RenyiEntropy dark")
-    IJ.run(c2, "Convert to Mask", "")
-    IJ.run(c2, "Set Measurements...", "area mean shape centroid display label redirect=None decimal=3")
-    IJ.run(c2, "Analyze Particles...", "size=0.50-10.00 circularity=0.30-1.00 show=Overlay display exclude summarize "
-                                       "add")
-    return c2
-
-
-def countruffles(imp):
-    """Threshold and count ruffles in channel 3.
-        This function splits an image in the separate channels, and counts the number of ruffles in the thresholded
-        channel 3.
-
-        Args:
-            directory: The path to a directory containing the tiff files.
-
-        Returns:
-            A list of filepaths.
-        """
-    c1, c2, c3 = ChannelSplitter.split(imp)
-    IJ.run(c3, "Subtract Background...", "rolling=50")
-    IJ.setAutoThreshold(c3, "RenyiEntropy dark")
-    IJ.run(c3, "Convert to Mask", "")
-    IJ.run(c3, "Set Measurements...", "area mean shape centroid display label redirect=None decimal=3")
-    IJ.run(c3, "Analyze Particles...", "size=1-30.00 circularity=0.20-1.00 show=Overlay display exclude summarize "
-                                       "add")
-    return c3
+import math
 
 
 def readdirfiles(directory):
@@ -101,15 +58,13 @@ def stackprocessor(path, nChannels=4, nSlices=1, nFrames=1):
                                                nChannels,  # channels
                                                nSlices,  # slices
                                                nFrames)  # frames
-
-    IJ.log(" - Current image: {}".format(imp))
     imp = ZProjector.run(imp, "max")
     return imp
 
 
 def countobjects(imp, rt,
-                 watershed=False, dilate=False,
-                 threshMethod="Otsu",
+                 subtractBackground=False, watershed=False, dilate=False,
+                 threshMethod="Otsu", physicalUnits=True,
                  minSize=0.00, maxSize=float("inf"),
                  minCirc=0.00, maxCirc=1.00):
     """Threshold and count objects in channel 'channelNumber'.
@@ -122,17 +77,20 @@ def countobjects(imp, rt,
         Returns:
             A list of filepaths.
         """
-    # channels = ChannelSplitter.split(imp)
-    # cn = channels[channelNumber-1]
+    cal = imp.getCalibration()
 
-    IJ.run(imp, "Subtract Background...", "rolling=50")
+    if subtractBackground:
+        IJ.run(imp, "Subtract Background...", "rolling=50")
     IJ.setAutoThreshold(imp, "{} dark".format(threshMethod))
     IJ.run(imp, "Convert to Mask", "")
     if dilate:
         IJ.run(imp, "Dilate", "")
     if watershed:
         IJ.run(imp, "Watershed", "")
-    # IJ.run(cn, "Set Measurements...", "area mean shape centroid display label redirect=None decimal=3")
+    if physicalUnits: # Convert physical units to pixels for the current calibration.
+        minSize = cal.getRawX(math.sqrt(minSize)) ** 2
+        maxSize = cal.getRawX(math.sqrt(maxSize)) ** 2
+
     pa = ParticleAnalyzer(
             ParticleAnalyzer.SHOW_OVERLAY_OUTLINES|ParticleAnalyzer.DISPLAY_SUMMARY, #int options
             Measurements.AREA|Measurements.SHAPE_DESCRIPTORS|Measurements.MEAN|Measurements.CENTROID|Measurements.LABELS, #int measurements
@@ -153,6 +111,7 @@ def main():
     bacdir = os.path.join(outdir, "bacteria")
     rufdir = os.path.join(outdir, "ruffles")
     gfpdir = os.path.join(outdir, "gfp")
+    channelsdir = os.path.join(outdir, "channels")
     if not os.path.isdir(nucdir):
         os.mkdir(nucdir)
     if not os.path.isdir(bacdir):
@@ -161,9 +120,16 @@ def main():
         os.mkdir(rufdir)
     if not os.path.isdir(gfpdir):
         os.mkdir(gfpdir)
+    if not os.path.isdir(channelsdir):
+        os.mkdir(channelsdir)
 
     # Collect all file paths in the input directory
     files = readdirfiles(indir)
+
+    nucResults = ResultsTable()
+    bacResults = ResultsTable()
+    rufResults = ResultsTable()
+    gfpResults = ResultsTable()
 
     for file in files:
         if file.endswith('ome.tif') or file.endswith('ome.tiff'):
@@ -173,17 +139,18 @@ def main():
                                    nFrames=1)
             channels = ChannelSplitter.split(imp)
             name = imp.getTitle()
-            cal = imp.getCalibration()
-            scale = cal['w']
-            IJ.log("calibration: {}".format(scale))
-
-            nucResults = ResultsTable()
-            bacResults = ResultsTable()
-            rufResults = ResultsTable()
-            gfpResults = ResultsTable()
+            IJ.log("Processing image: {}".format(name))
+            for c in range(len(channels)):
+                IJ.run(channels[c], "Grays", "")
+                IJ.run(channels[c], "Invert", "")
+                jpgname = channels[c].getShortTitle()
+                jpgoutfile = os.path.join(channelsdir, "{}.jpg".format(jpgname))
+                IJ.saveAs(channels[c].flatten(), "Jpeg", jpgoutfile)
+                IJ.run(channels[c], "Invert", "")
 
             nuc = countobjects(channels[0], nucResults,
                                threshMethod="Triangle",
+                               subtractBackground=True,
                                # dilate=True,
                                watershed=True,
                                minSize=3.00,
@@ -193,36 +160,66 @@ def main():
 
             bac = countobjects(channels[1], bacResults,
                                threshMethod="RenyiEntropy",
+                               subtractBackground=False,
                                watershed=False,
-                               minSize=0.00,
-                               maxSize=100.00,
+                               minSize=0.20,
+                               maxSize=30.00,
                                minCirc=0.00,
                                maxCirc=1.00)
 
             ruf = countobjects(channels[2], rufResults,
                                threshMethod="RenyiEntropy",
-                               minSize=1.00,
+                               minSize=2.00,
                                maxSize=30.00,
                                minCirc=0.20,
                                maxCirc=1.00)
 
             gfp = countobjects(channels[3], gfpResults,
                                threshMethod="RenyiEntropy",
-                               watershed=False,
-                               minSize=0.00,
-                               maxSize=100.00,
+                               subtractBackground=False,
+                               watershed=True,
+                               minSize=0.20,
+                               maxSize=30.00,
                                minCirc=0.00,
                                maxCirc=1.00)
 
-            outfilenuc = os.path.join(nucdir, "threshold_{}".format(name))
-            outfilebac = os.path.join(bacdir, "threshold_{}".format(name))
-            outfileruf = os.path.join(rufdir, "threshold_{}".format(name))
-            outfilegfp = os.path.join(gfpdir, "threshold_{}".format(name))
+            # binaries = [nuc, bac, ruf, gfp]
+            # channels[0].show()
+            # binaries[0].show()
+            # binMontage = RGBStackMerge().mergeChannels(binaries, False)
+            # binMontage.show()
+            # chsMontage = RGBStackMerge().mergeChannels(channels, False)
+            # binMontage = MontageMaker().makeMontage2(binMontage,
+            #                                        4,  # int columns
+            #                                        4,  # int rows
+            #                                        1.00,  # double scale
+            #                                        1,  # int first
+            #                                        16,  # int last
+            #                                        1,  # int inc
+            #                                        0,  # int borderWidth
+            #                                        False)  # boolean labels)
+            # chsMontage = MontageMaker().makeMontage2(chsMontage,
+            #                                          4,  # int columns
+            #                                          4,  # int rows
+            #                                          1.00,  # double scale
+            #                                          1,  # int first
+            #                                          16,  # int last
+            #                                          1,  # int inc
+            #                                          0,  # int borderWidth
+            #                                          False)  # boolean labels)
+            #
+            # binMontage.show()
+            # chsMontage.show()
 
-            IJ.saveAs(nuc, "Tiff", outfilenuc)
-            IJ.saveAs(bac, "Tiff", outfilebac)
-            IJ.saveAs(ruf, "Tiff", outfileruf)
-            IJ.saveAs(gfp, "Tiff", outfilegfp)
+            outfilenuc = os.path.join(nucdir, "threshold_nuc_{}".format(name))
+            outfilebac = os.path.join(bacdir, "threshold_bac_{}".format(name))
+            outfileruf = os.path.join(rufdir, "threshold_ruf_{}".format(name))
+            outfilegfp = os.path.join(gfpdir, "threshold_gfp_{}".format(name))
+
+            IJ.saveAs(nuc.flatten(), "Tiff", outfilenuc)
+            IJ.saveAs(bac.flatten(), "Tiff", outfilebac)
+            IJ.saveAs(ruf.flatten(), "Tiff", outfileruf)
+            IJ.saveAs(gfp.flatten(), "Tiff", outfilegfp)
 
     nucResults.show("nuclei")
     bacResults.show("bacteria")
@@ -238,96 +235,6 @@ def main():
     ResultsTable.save(bacResults, bacout)
     ResultsTable.save(rufResults, rufout)
     ResultsTable.save(gfpResults, gfpout)
-
-
-    # # Count nuclei for every image in the folder
-    # IJ.log("Counting nuclei...")
-    # for file in files:
-    #     if file.endswith('ome.tif') or file.endswith('ome.tiff'):
-    #         image = stackprocessor(file,
-    #                                nChannels=4,
-    #                                nSlices=7,
-    #                                nFrames=1)
-    #         nuc = countobjects(image,
-    #                            channelNumber=1,
-    #                            threshMethod="Triangle",
-    #                            dilate=True,
-    #                            watershed=True)
-    #         name = image.getTitle()
-    #         outfile = os.path.join(nucdir, "threshold_{}".format(name))
-    #         IJ.saveAs(nuc, "Tiff", outfile)
-    #
-    # # Save the ResultsTable object
-    # idx = name.find("MMStack")
-    # condition = name[:idx]
-    # csvname = "nuc_{}".format(condition)
-    # saveresults(outdir, csvname)
-    #
-    # # Count bacteria for every image in the folder
-    # IJ.log("Counting bacteria...")
-    # for file in files:
-    #     if file.endswith('ome.tif') or file.endswith('ome.tiff'):
-    #         image = stackprocessor(file,
-    #                                nChannels=4,
-    #                                nSlices=7,
-    #                                nFrames=1)
-    #         bac = countobjects(image,
-    #                            channelNumber=2,
-    #                            threshMethod="RenyiEntropy",
-    #                            size="1-30.00",
-    #                            circularity="0.30-1.00",
-    #                            )
-    #         name = image.getTitle()
-    #         outfile = os.path.join(bacdir, "threshold_{}".format(name))
-    #         IJ.saveAs(bac, "Tiff", outfile)
-    #
-    # # Save the ResultsTable object
-    # csvname = "bac_{}".format(condition)
-    # saveresults(outdir, csvname)
-    #
-    # # Count ruffles for every image in the folder
-    # IJ.log("Counting ruffles...")
-    # for file in files:
-    #     if file.endswith('ome.tif') or file.endswith('ome.tiff'):
-    #         image = stackprocessor(file,
-    #                                nChannels=4,
-    #                                nSlices=7,
-    #                                nFrames=1)
-    #         ruf = countobjects(image,
-    #                            channelNumber=3,
-    #                            threshMethod="RenyiEntropy",
-    #                            size="1-30.00",
-    #                            circularity="0.20-1.00",
-    #                            )
-    #         name = image.getTitle()
-    #         outfile = os.path.join(rufdir, "threshold_{}".format(name))
-    #         IJ.saveAs(ruf, "Tiff", outfile)
-    #
-    # # Save the ResultsTable object
-    # csvname = "ruf_{}".format(condition)
-    # saveresults(outdir, csvname)
-    #
-    # # Count gfp+ objects for every image in the folder
-    # IJ.log("Counting ruffles...")
-    # for file in files:
-    #     if file.endswith('ome.tif') or file.endswith('ome.tiff'):
-    #         image = stackprocessor(file,
-    #                                nChannels=4,
-    #                                nSlices=7,
-    #                                nFrames=1)
-    #         gfp = countobjects(image,
-    #                            channelNumber=4,
-    #                            threshMethod="RenyiEntropy",
-    #                            size="1-30.00",
-    #                            circularity="0.30-1.00"
-    #                            )
-    #         name = image.getTitle()
-    #         outfile = os.path.join(gfpdir, "threshold_{}".format(name))
-    #         IJ.saveAs(gfp, "Tiff", outfile)
-    #
-    # # Save the ResultsTable object
-    # csvname = "ruf_{}".format(condition)
-    # saveresults(outdir, csvname)
 
 
 main()
