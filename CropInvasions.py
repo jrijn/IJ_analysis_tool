@@ -135,15 +135,6 @@ def croproi(imp, tracks,
     output1 = subdirs[0]
     output2 = subdirs[1]
 
-    # Extract the column index of 'TRACK_INDEX' from the csv file.
-    # The column name cannot be used directly to extract the column values.
-    # The 'TRACK_INDEX' is used to refer to the frame's row numbers, we'll loop through these.
-    # track_idx = results_table.getColumnIndex(trackindex)
-    # tracks = results_table.getColumn(track_idx).tolist()
-    # duration_idx = results_table.getColumnIndex(trackduration)
-    # duration = results_table.getColumn(duration_idx).tolist()
-    # IJ.log("[1] {} \n[2] {}\n[3] ".format(track_idx, tracks))
-
     # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack!
     for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time, or 'tracks' for all tracks.
         # Extract all needed row values.
