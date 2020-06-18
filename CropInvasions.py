@@ -1,7 +1,7 @@
 import ij.IJ as IJ
 import ij.ImagePlus as ImagePlus
 import ij.ImageStack as ImageStack
-import ij.WindowManager as wm
+import ij.WindowManager as WindowManager
 import ij.measure.ResultsTable as ResultsTable
 import ij.measure.Measurements as Measurements
 import ij.plugin.ChannelSplitter as ChannelSplitter
@@ -21,7 +21,7 @@ import os
 # import math
 
 
-def preparedir(outdir, dir1="output1", dir2="output2"):
+def preparedir(outdir, dir1="output1", dir2="output2", dir3="output3"):
     """Prepares input and output directories of this module.
 
     Simple function which prepares the output directory and input .csv file.
@@ -43,12 +43,15 @@ def preparedir(outdir, dir1="output1", dir2="output2"):
     # Also create the output subdirectory paths, if they do not exist already.
     out1 = os.path.join(outdir, dir1)
     out2 = os.path.join(outdir, dir2)
+    out3 = os.path.join(outdir, dir3)
     if not os.path.isdir(out1):
         os.mkdir(out1)
     if not os.path.isdir(out2):
         os.mkdir(out2)
+    if not os.path.isdir(out3):
+        os.mkdir(out3)
 
-    out = [out1, out2]
+    out = [out1, out2, out3]
     return out
 
 
@@ -142,30 +145,25 @@ def croproi(imp, tracks,
     # IJ.log("[1] {} \n[2] {}\n[3] ".format(track_idx, tracks))
 
     # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack!
-    for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
+    for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time, or 'tracks' for all tracks.
         # Extract all needed row values.
-        i_x = int(i[trackx])
-        i_y = int(i[tracky])
+        idx = int(i[trackindex])
+        i_id = int(i[trackid])
+        i_x = int(i[trackx] * 5.988)  # fix for calibration
+        i_y = int(i[tracky] * 5.988)  # fix for calibration
+        i_start = int(i[trackstart] / 15)
+        i_stop = int(i[trackstop] / 15)
+        i_duration = i[trackduration] / 15
+        # TODO Fix this if the "add_empty_before/after" function is still required.
+        # i_fill_duration = int(max(duration) / 15 - i_duration)
+        width, height, nChannels, nSlices, nFrames = imp.getDimensions()
 
         # Now set an ROI according to the track's xy position in the hyperstack.
         imp.setRoi(i_x - roi_x / 2, i_y - roi_y / 2,  # upper left x, upper left y
                    roi_x, roi_y)  # roi x dimension, roi y dimension
 
-
-        idx = int(i)
-        i_id = int(results_table.getValue(trackid, idx))
-        i_x = int(results_table.getValue(trackxlocation, idx) * 5.988)  # fix for calibration
-        i_y = int(results_table.getValue(trackylocation, idx) * 5.988)  # fix for calibration
-        i_start = int(results_table.getValue(trackstart, idx) / 15)
-        i_stop = int(results_table.getValue(trackstop, idx) / 15)
-        i_duration = int(results_table.getValue(trackduration, idx) / 15)
-        i_fill_duration = int(max(duration) / 15 - i_duration)
-        width, height, nChannels, nSlices, nFrames = imp.getDimensions()
-
-
-
         # And then crop (duplicate, actually) this ROI for the track's time duration.
-        IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(idx, int(max(tracks))))
+        IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(idx, int(len(tracks))))
         imp2 = Duplicator().run(imp,
                                 1,  # firstC
                                 nChannels,  # lastC
@@ -176,7 +174,7 @@ def croproi(imp, tracks,
 
         # Save the substack in the output directory
         IJ.log("Save substack...")
-        outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(i_id))
+        outfile = os.path.join(subdirs[2], "TRACK_ID_{}.tif".format(i_id))
         IJ.saveAs(imp2, "Tiff", outfile)
 
         # Finally, if the user wants empty frames appended to get equal frame counts throughout:
@@ -426,11 +424,11 @@ def _readdirfiles(directory, nChannels=2, nSlices=1):
 
     return dirfiles
 
-#TODO Only works for 2-channel images.
+# TODO fix docstring
 def _listsplitchannels(collection):
     """Split channels of a list of hyperstacks.
 
-    This function splits a list of 2 channel hyperstacks in two separate lists per channel.
+    This function splits a list of hyperstacks in separate lists per channel.
 
     Args:
         collection: A list of hyperstacks.
@@ -439,15 +437,21 @@ def _listsplitchannels(collection):
         One list of hyperstacks per channel.
     """
 
-    coll_c1 = []
-    coll_c2 = []
+    width, height, nChannels, nSlices, nFrames = collection[0].getDimensions()
+
+    collect = [[]] * nChannels
 
     for stack in collection:
-        c1, c2 = ChannelSplitter().split(stack)
-        coll_c1.append(c1.getImageStack())
-        coll_c2.append(c2.getImageStack())
+        
+        channels_ = ChannelSplitter().split(stack)
 
-    return coll_c1, coll_c2
+        for i in range(len(channels_)):
+            collect[i].append(channels_[i].getImageStack())
+
+        # coll_c1.append(c1.getImageStack())
+        # coll_c2.append(c2.getImageStack())
+
+    return collect
 
 
 def _horcombine(imp_collection):
@@ -461,6 +465,7 @@ def _horcombine(imp_collection):
     """
 
     comb = imp_collection[0]
+    IJ.log("collection: {}\nfirst item in horcombine: {}".format(imp_collection, comb))
 
     for imp in imp_collection:
         if imp != imp_collection[0]:
@@ -489,7 +494,7 @@ def _vercombine(imp_collection):
 
 
 # TODO: Currently only handles input files with 2 channels. Fix if broader application is needed.
-def combinestacks(directory, height=5):
+def combinestacks(directory, height=5, nChannels=2, nSlices=1):
     """Combine all tiff stacks in a directory to a panel.
 
     Args:
@@ -501,53 +506,79 @@ def combinestacks(directory, height=5):
     """
 
     IJ.log("\nCombining stacks...")
-    files = _readdirfiles(directory)
+    files = _readdirfiles(directory, nChannels=nChannels, nSlices=nSlices)
     groups = chunks(files, height)
 
-    horiz = []
-    for i in range(0, len(groups)):
-        c1, c2 = _listsplitchannels(groups[i])
-        comb_c1 = _horcombine(c1)
-        comb_c2 = _horcombine(c2)
-        comb_list = [ImagePlus('c1', comb_c1), ImagePlus('c2', comb_c2)]
-        comb = RGBStackMerge().mergeChannels(comb_list, False)  # boolean keep
-        horiz.append(comb)
+    hor = []
+    for i in range(len(groups)):
+        
+        channels = _listsplitchannels(groups[i]) # channels is a list of length nChannels, containing sublists with images per channel.
 
-    for i in range(0, len(horiz)):
-        c1, c2 = _listsplitchannels(horiz)
-        comb_c1 = _vercombine(c1)
-        comb_c2 = _vercombine(c2)
-        comb_list = [ImagePlus('c1', comb_c1), ImagePlus('c2', comb_c2)]
-        comb = RGBStackMerge().mergeChannels(comb_list, False)  # boolean keep
+        horizontals = []
+        for i in channels:
+            IJ.log("channels: {}".format(i))
+            horizontal = _horcombine(i)
+            horizontals.append(horizontal)
 
-    comb.show()
+        IJ.log("horizontals: {}".format(horizontals))
+        # horizontals = [_horcombine(channel) for channel in channels]
+        horizontals = [ImagePlus(None, channel) for channel in horizontals]
+        merge = RGBStackMerge().mergeChannels(horizontals, False)  # boolean keep
+        merge.show()
+        hor.append(merge)
+
+        # comb_c1 = _horcombine(c1)
+        # comb_c2 = _horcombine(c2)
+        # comb_list = [ImagePlus('c1', comb_c1), ImagePlus('c2', comb_c2)]
+        # comb = RGBStackMerge().mergeChannels(comb_list, False)  # boolean keep
+        # horiz.append(comb)
+
+    for i in range(len(hor)):
+
+        channels = _listsplitchannels(groups[i]) # channels is a list of length nChannels, containing sublists with images per channel.
+
+        verticals = [_vercombine(channel) for channel in channels]
+        verticals = [ImagePlus(None, channel) for channel in verticals]
+        merge = RGBStackMerge().mergeChannels(verticals, False)  # boolean keep
+
+        # c1, c2 = _listsplitchannels(horiz)
+        # comb_c1 = _vercombine(c1)
+        # comb_c2 = _vercombine(c2)
+        # comb_list = [ImagePlus('c1', comb_c1), ImagePlus('c2', comb_c2)]
+        # comb = RGBStackMerge().mergeChannels(comb_list, False)  # boolean keep
+
+    return merge
 
 
 # The main loop, call wanted functions.
 def main():
     # Get the wanted output directory and prepare subdirectories for output.
     outdir = IJ.getDirectory("output directory")
-    subdirs = preparedir(outdir, dir1="with_empty_stacks", dir2="montage")
+    subdirs = preparedir(outdir, dir1="with_empty_stacks", dir2="montage", dir3="separate_ruffles")
 
     # Open the 'Track statistics.csv' input file and run main crop function.
-    results_table = opencsv()
+    rt = opencsv()
+    tracks = getresults(rt)
+    IJ.log("{}".format(tracks))
     imp = WindowManager.getCurrentImage()
 
-    croproi(imp, results_table,
-            outdir=outdir, subdirs=subdirs,
-            trackindex="TRACK_INDEX",
-            trackduration="TRACK_DURATION",
-            trackid="TRACK_ID",
-            trackxlocation="TRACK_X_LOCATION",
-            trackylocation="TRACK_Y_LOCATION",
-            trackstart="TRACK_START",
-            trackstop="TRACK_STOP",
-            add_empty_before=False, add_empty_after=True,
-            make_montage=False, roi_x=150, roi_y=150)
+    croproi(imp, tracks=tracks, outdir=outdir, subdirs=subdirs)
+
+    # croproi(imp, tracks=rt,
+    #         outdir=outdir, subdirs=subdirs,
+    #         trackindex="TRACK_INDEX",
+    #         trackduration="TRACK_DURATION",
+    #         trackid="TRACK_ID",
+    #         trackx="TRACK_X_LOCATION",
+    #         tracky="TRACK_Y_LOCATION",
+    #         trackstart="TRACK_START",
+    #         trackstop="TRACK_STOP",
+    #         add_empty_before=False, add_empty_after=True,
+    #         make_montage=False, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
-    combinestacks(subdirs[0])
-
+    # combine = combinestacks(subdirs[2], height=5, nChannels=3, nSlices=1)
+    # combine.show()
 
 # Execute main()
 main()
