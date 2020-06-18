@@ -1,9 +1,24 @@
-from ij.plugin import Duplicator, Concatenator, ChannelSplitter, RGBStackMerge, StackCombiner, MontageMaker, \
-    StackCombiner, HyperStackConverter
-from ij import WindowManager as WindowManager
-from ij import IJ, ImagePlus, ImageStack
-from ij.measure import ResultsTable as ResultsTable
+import ij.IJ as IJ
+import ij.ImagePlus as ImagePlus
+import ij.ImageStack as ImageStack
+import ij.WindowManager as wm
+import ij.measure.ResultsTable as ResultsTable
+import ij.measure.Measurements as Measurements
+import ij.plugin.ChannelSplitter as ChannelSplitter
+import ij.plugin.HyperStackConverter as HyperStackConverter
+import ij.plugin.ZProjector as ZProjector
+import ij.plugin.RGBStackMerge as RGBStackMerge
+import ij.plugin.StackCombiner as StackCombiner
+import ij.plugin.MontageMaker as MontageMaker
+import ij.plugin.StackCombiner as StackCombiner
+import ij.plugin.Duplicator as Duplicator
+import ij.plugin.Concatenator as Concatenator
+# import ij.plugin.Thresholder as Thresholder
+# import ij.plugin.filter.ParticleAnalyzer as ParticleAnalyzer
+# import ij.plugin.filter.BackgroundSubtracter as BackgroundSubtracter
+# import ij.plugin.filter.EDM as EDM
 import os
+# import math
 
 
 def preparedir(outdir, dir1="output1", dir2="output2"):
@@ -50,20 +65,40 @@ def opencsv():
 
     # Open the csv file and return it as ResultsTable object.
     try:
-        res = ResultsTable.open(csv)
-        return res
-    except:
-        IJ.log("Oops, the .csv file could not open")
+        if csv.endswith(".csv"):
+            res = ResultsTable.open(csv)
+            return res
+        else:
+            raise TypeError()
+    except TypeError:
+        IJ.log("The chosen file was not a .csv file.")
+    except Exception as ex:
+        IJ.log("Something in opencsv() went wrong: {}".format(type(ex).__name__, ex.args))
+
+
+def getresults(rt):
+    try:
+        columns = rt.getHeadings()
+        table = [{column: rt.getValue(column, row) for column in columns} for row in range(rt.size())]
+        if rt.columnExists("Label"):
+            for i in range(len(table)):
+                table[i]["Label"] = rt.getStringValue("Label", i)
+        # IJ.log("table: {}\nlength: {}".format(table, len(table)))
+        return table
+    except AttributeError:
+        IJ.log("The parameter passed to getresults() was not a resultsTable object.")
+    except Exception as ex:
+        IJ.log("Something in getresults() went wrong: {}".format(type(ex).__name__, ex.args))
 
 
 # TODO: There's a lot going on, might want to try and split this up in separate functions.
-def croproi(imp, results_table,
+def croproi(imp, tracks,
             outdir, subdirs,
             trackindex="TRACK_INDEX",
             trackduration="TRACK_DURATION",
             trackid="TRACK_ID",
-            trackxlocation="TRACK_X_LOCATION",
-            trackylocation="TRACK_Y_LOCATION",
+            trackx="TRACK_X_LOCATION",
+            tracky="TRACK_Y_LOCATION",
             trackstart="TRACK_START",
             trackstop="TRACK_STOP",
             add_empty_before=False, add_empty_after=False,
@@ -100,15 +135,23 @@ def croproi(imp, results_table,
     # Extract the column index of 'TRACK_INDEX' from the csv file.
     # The column name cannot be used directly to extract the column values.
     # The 'TRACK_INDEX' is used to refer to the frame's row numbers, we'll loop through these.
-    track_idx = results_table.getColumnIndex(trackindex)
-    tracks = results_table.getColumn(track_idx).tolist()
-    duration_idx = results_table.getColumnIndex(trackduration)
-    duration = results_table.getColumn(duration_idx).tolist()
-    IJ.log("[1] {} \n[2] {}\n[3] ".format(track_idx, tracks))
+    # track_idx = results_table.getColumnIndex(trackindex)
+    # tracks = results_table.getColumn(track_idx).tolist()
+    # duration_idx = results_table.getColumnIndex(trackduration)
+    # duration = results_table.getColumn(duration_idx).tolist()
+    # IJ.log("[1] {} \n[2] {}\n[3] ".format(track_idx, tracks))
 
     # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack!
-    for i in range(0, 5):  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
+    for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
         # Extract all needed row values.
+        i_x = int(i[trackx])
+        i_y = int(i[tracky])
+
+        # Now set an ROI according to the track's xy position in the hyperstack.
+        imp.setRoi(i_x - roi_x / 2, i_y - roi_y / 2,  # upper left x, upper left y
+                   roi_x, roi_y)  # roi x dimension, roi y dimension
+
+
         idx = int(i)
         i_id = int(results_table.getValue(trackid, idx))
         i_x = int(results_table.getValue(trackxlocation, idx) * 5.988)  # fix for calibration
@@ -119,9 +162,7 @@ def croproi(imp, results_table,
         i_fill_duration = int(max(duration) / 15 - i_duration)
         width, height, nChannels, nSlices, nFrames = imp.getDimensions()
 
-        # Now set an ROI according to the track's xy position in the hyperstack.
-        imp.setRoi(i_x - roi_x / 2, i_y - roi_y / 2,  # upper left x, upper left y
-                   roi_x, roi_y)  # roi x dimension, roi y dimension
+
 
         # And then crop (duplicate, actually) this ROI for the track's time duration.
         IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(idx, int(max(tracks))))
@@ -238,7 +279,7 @@ def _emptystack(imp, inframes=0):
     outstack.setCalibration(cal)
     return outstack
 
-
+#TODO only works for 2 channel images.
 def concatenatestack(imp, frames_before, frames_after):
     """Append empty frames (timepoints) before and after an input stack.
 
@@ -312,30 +353,24 @@ def montage(imp):
     """
 
     width, height, nChannels, nSlices, nFrames = imp.getDimensions()
-    ch1, ch2 = ChannelSplitter().split(imp)
-    ch1_mont = MontageMaker().makeMontage2(ch1,
-                                           nFrames,  # int columns
-                                           nSlices,  # int rows
-                                           1.00,  # double scale
-                                           1,  # int first
-                                           nFrames,  # int last
-                                           1,  # int inc
-                                           0,  # int borderWidth
-                                           False)  # boolean labels)
-    ch2_mont = MontageMaker().makeMontage2(ch2,
-                                           nFrames,  # int columns
-                                           nSlices,  # int rows
-                                           1.00,  # double scale
-                                           1,  # int first
-                                           nFrames,  # int last
-                                           1,  # int inc
-                                           0,  # int borderWidth
-                                           False)  # boolean labels)
+
+    channels = ChannelSplitter().split(imp)
+    montages = []
+    for channel in channels:
+        c = MontageMaker().makeMontage2(channel,
+                                               nFrames,  # int columns
+                                               nSlices,  # int rows
+                                               1.00,  # double scale
+                                               1,  # int first
+                                               nFrames,  # int last
+                                               1,  # int inc
+                                               0,  # int borderWidth
+                                               False)  # boolean labels)
+        montages.append(c)
 
     # Now re-merge the channels and return the montage.
-    mont_list = [ch1_mont, ch2_mont]
-    mont = RGBStackMerge().mergeChannels(mont_list, False)  # boolean keep
-    return mont
+    montage = RGBStackMerge().mergeChannels(montages, False)  # boolean keep
+    return montage
 
 
 def chunks(seq, num):
@@ -391,7 +426,7 @@ def _readdirfiles(directory, nChannels=2, nSlices=1):
 
     return dirfiles
 
-
+#TODO Only works for 2-channel images.
 def _listsplitchannels(collection):
     """Split channels of a list of hyperstacks.
 
