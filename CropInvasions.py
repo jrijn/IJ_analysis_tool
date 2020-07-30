@@ -1,7 +1,7 @@
 import ij.IJ as IJ
 import ij.ImagePlus as ImagePlus
 import ij.ImageStack as ImageStack
-import ij.WindowManager as wm
+import ij.WindowManager as WindowManager
 import ij.measure.ResultsTable as ResultsTable
 import ij.measure.Measurements as Measurements
 import ij.plugin.ChannelSplitter as ChannelSplitter
@@ -144,28 +144,29 @@ def croproi(imp, tracks,
     # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack!
     for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
         # Extract all needed row values.
-        i_x = int(i[trackx])
-        i_y = int(i[tracky])
+        i_x = int(i[trackx] * 5.988)
+        i_y = int(i[tracky] * 5.988)
 
         # Now set an ROI according to the track's xy position in the hyperstack.
         imp.setRoi(i_x - roi_x / 2, i_y - roi_y / 2,  # upper left x, upper left y
                    roi_x, roi_y)  # roi x dimension, roi y dimension
 
 
-        idx = int(i)
-        i_id = int(results_table.getValue(trackid, idx))
-        i_x = int(results_table.getValue(trackxlocation, idx) * 5.988)  # fix for calibration
-        i_y = int(results_table.getValue(trackylocation, idx) * 5.988)  # fix for calibration
-        i_start = int(results_table.getValue(trackstart, idx) / 15)
-        i_stop = int(results_table.getValue(trackstop, idx) / 15)
-        i_duration = int(results_table.getValue(trackduration, idx) / 15)
-        i_fill_duration = int(max(duration) / 15 - i_duration)
+        # idx = int(i)
+        i_id = int(i[trackid])
+        # i_x = int(results_table.getValue(trackxlocation, idx) * 5.988)  # fix for calibration
+        # i_y = int(results_table.getValue(trackylocation, idx) * 5.988)  # fix for calibration
+        # i_start = int(results_table.getValue(trackstart, idx) / 15)
+        # i_stop = int(results_table.getValue(trackstop, idx) / 15)
+        # i_duration = int(results_table.getValue(trackduration, idx) / 15)
+        # i_fill_duration = int(max(duration) / 15 - i_duration)
+        i_start = int(i[trackstart] / 15)
+        i_stop = int(i[trackstop] / 15)
+
         width, height, nChannels, nSlices, nFrames = imp.getDimensions()
 
-
-
         # And then crop (duplicate, actually) this ROI for the track's time duration.
-        IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(idx, int(max(tracks))))
+        IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(i_id, int(len(tracks))))
         imp2 = Duplicator().run(imp,
                                 1,  # firstC
                                 nChannels,  # lastC
@@ -179,62 +180,62 @@ def croproi(imp, tracks,
         outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(i_id))
         IJ.saveAs(imp2, "Tiff", outfile)
 
-        # Finally, if the user wants empty frames appended to get equal frame counts throughout:
-        if add_empty_before and add_empty_after:
-            # Concatenate the stacks with empty stacks before and after.
-            IJ.log("Adding empty frames before and after...")
-            imp_empty = concatenatestack(imp2, i_start, nFrames - i_stop)
-            if imp_empty:
-                IJ.run(imp_empty, "Label...",
-                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
-                                                                                                               nFrames))
-                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
-                IJ.saveAs(imp_empty, "Tiff", outfile3)
-            else:
-                # Let's us know if this concatenation fails.
-                IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
+        # # Finally, if the user wants empty frames appended to get equal frame counts throughout:
+        # if add_empty_before and add_empty_after:
+        #     # Concatenate the stacks with empty stacks before and after.
+        #     IJ.log("Adding empty frames before and after...")
+        #     imp_empty = concatenatestack(imp2, i_start, nFrames - i_stop)
+        #     if imp_empty:
+        #         IJ.run(imp_empty, "Label...",
+        #                "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
+        #                                                                                                        nFrames))
+        #         outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
+        #         IJ.saveAs(imp_empty, "Tiff", outfile3)
+        #     else:
+        #         # Let's us know if this concatenation fails.
+        #         IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
 
-        if not add_empty_before and add_empty_after:
-            # Concatenate the stacks with empty stacks after.
-            IJ.log("Adding empty frames after...")
+        # if not add_empty_before and add_empty_after:
+        #     # Concatenate the stacks with empty stacks after.
+        #     IJ.log("Adding empty frames after...")
 
-            if i_fill_duration != 0:  # Check if the current iteration is not the longest track.
-                imp_empty = concatenatestack(imp2, 0, i_fill_duration)
-            elif i_fill_duration == 0:  # If it is the longest track, just return the stack as is.
-                imp_empty = imp2
-            else:
-                IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
+        #     if i_fill_duration != 0:  # Check if the current iteration is not the longest track.
+        #         imp_empty = concatenatestack(imp2, 0, i_fill_duration)
+        #     elif i_fill_duration == 0:  # If it is the longest track, just return the stack as is.
+        #         imp_empty = imp2
+        #     else:
+        #         IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
 
-            if imp_empty:
-                IJ.run(imp_empty, "Label...",
-                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
-                                                                                                               nFrames))
-                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
-                IJ.saveAs(imp_empty, "Tiff", outfile3)
-            else:
-                # Let's us know if this concatenation fails.
-                IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
+        #     if imp_empty:
+        #         IJ.run(imp_empty, "Label...",
+        #                "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
+        #                                                                                                        nFrames))
+        #         outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
+        #         IJ.saveAs(imp_empty, "Tiff", outfile3)
+        #     else:
+        #         # Let's us know if this concatenation fails.
+        #         IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
 
-        if add_empty_before and not add_empty_after:
-            # Concatenate the stacks with empty stacks before.
-            IJ.log("Adding empty frames before...")
+        # if add_empty_before and not add_empty_after:
+        #     # Concatenate the stacks with empty stacks before.
+        #     IJ.log("Adding empty frames before...")
 
-            if i_fill_duration != 0:  # Check if the current iteration is not the longest track.
-                imp_empty = concatenatestack(imp2, i_fill_duration)
-            elif i_fill_duration == 0:  # If it is the longest track, just return the stack as is.
-                imp_empty = imp2
-            else:
-                IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
+        #     if i_fill_duration != 0:  # Check if the current iteration is not the longest track.
+        #         imp_empty = concatenatestack(imp2, i_fill_duration)
+        #     elif i_fill_duration == 0:  # If it is the longest track, just return the stack as is.
+        #         imp_empty = imp2
+        #     else:
+        #         IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
 
-            if imp_empty:
-                IJ.run(imp_empty, "Label...",
-                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
-                                                                                                               nFrames))
-                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
-                IJ.saveAs(imp_empty, "Tiff", outfile3)
-            else:
-                # Let's us know if this concatenation fails.
-                IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
+        #     if imp_empty:
+        #         IJ.run(imp_empty, "Label...",
+        #                "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
+        #                                                                                                        nFrames))
+        #         outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
+        #         IJ.saveAs(imp_empty, "Tiff", outfile3)
+        #     else:
+        #         # Let's us know if this concatenation fails.
+        #         IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
 
         # Save the stack montage
         if make_montage:
@@ -530,23 +531,24 @@ def main():
     subdirs = preparedir(outdir, dir1="with_empty_stacks", dir2="montage")
 
     # Open the 'Track statistics.csv' input file and run main crop function.
-    results_table = opencsv()
+    rt = opencsv()
+    rt = getresults(rt)
     imp = WindowManager.getCurrentImage()
 
-    croproi(imp, results_table,
+    croproi(imp, rt,
             outdir=outdir, subdirs=subdirs,
             trackindex="TRACK_INDEX",
             trackduration="TRACK_DURATION",
             trackid="TRACK_ID",
-            trackxlocation="TRACK_X_LOCATION",
-            trackylocation="TRACK_Y_LOCATION",
+            trackx="TRACK_X_LOCATION",
+            tracky="TRACK_Y_LOCATION",
             trackstart="TRACK_START",
             trackstop="TRACK_STOP",
-            add_empty_before=False, add_empty_after=True,
+            add_empty_before=False, add_empty_after=False,
             make_montage=False, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
-    combinestacks(subdirs[0])
+    # combinestacks(subdirs[0])
 
 
 # Execute main()
