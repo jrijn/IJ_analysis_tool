@@ -37,10 +37,7 @@ def preparedir(outdir, dir1="output1", dir2="output2"):
         [path_of_output1, path_of_output2]
     """
 
-    # First ask for an output directory and the location of the 'Track statistics.csv' Trackmate output.
-    # outdir = IJ.getDirectory("output directory")
-
-    # Also create the output subdirectory paths, if they do not exist already.
+    # Create the output subdirectory paths, if they do not exist already.
     out1 = os.path.join(outdir, dir1)
     out2 = os.path.join(outdir, dir2)
     if not os.path.isdir(out1):
@@ -77,6 +74,21 @@ def opencsv():
 
 
 def getresults(rt):
+    """Retrieve IJ ResultsTable object and return table as list of dictionaries.
+
+    Args:
+        rt (ij.measure.ResultsTable): An Imagej ResultsTable object.
+
+    Returns:
+        list: A list of ResultsTable rows, represented as dictionary with column names as keys.
+        
+        for example:
+            [
+            {'column1' : 'value', 'column2' : 'value'},
+            {'column1' : 'value', 'column2' : 'value'},
+            ...,
+            ]
+    """    
     try:
         columns = rt.getHeadings()
         table = [{column: rt.getValue(column, row) for column in columns} for row in range(rt.size())]
@@ -91,9 +103,7 @@ def getresults(rt):
         IJ.log("Something in getresults() went wrong: {}".format(type(ex).__name__, ex.args))
 
 
-# TODO: There's a lot going on, might want to try and split this up in separate functions.
-def croproi(imp, tracks,
-            outdir, subdirs,
+def croproi(imp, tracks, outdir, subdirs, add_empty_after=False,
             trackindex="TRACK_INDEX",
             trackduration="TRACK_DURATION",
             trackid="TRACK_ID",
@@ -101,8 +111,7 @@ def croproi(imp, tracks,
             tracky="TRACK_Y_LOCATION",
             trackstart="TRACK_START",
             trackstop="TRACK_STOP",
-            add_empty_before=False, add_empty_after=False,
-            make_montage=False, roi_x=150, roi_y=150):
+            roi_x=150, roi_y=150):
     """Function cropping ROIs from an ImagePlus stack based on a ResultsTable object.
 
     This function crops square ROIs from a hyperstack based on locations defined in the ResultsTable.
@@ -115,16 +124,14 @@ def croproi(imp, tracks,
         results_table: A ResultsTable object with the proper column names.
         outdir: The primary output directory.
         subdirs: A list of two paths for the output of this funcion. ([path_of_output1, path_of_output2])
-        trackindex:
-        trackduration:
-        trackid:
-        trackxlocation:
-        trackylocation:
-        trackstart:
-        trackstop:
-        add_empty_before: Add empty frames before to make all output stacks the same lenght.
         add_empty_after: Add empty frames after to make all output stacks the same lenght.
-        make_montage: Make a montage of each substack and save to output1
+        trackindex: A unique track identifier. Defaults to "TRACK_INDEX"
+        trackduration: The tracks duration. Defaults to "TRACK_DURATION".
+        trackid: The track ID, will be used in the filename. Defaults to "TRACK_ID".
+        trackxlocation: Defaults to "TRACK_X_LOCATION".
+        trackylocation: Defaults to "TRACK_Y_LOCATION".
+        trackstart: Defaults to "TRACK_START".
+        trackstop: Defaults to "TRACK_STOP".
         roi_x: Width of the ROI.
         roi_y: Height of the ROI.
     """
@@ -132,41 +139,28 @@ def croproi(imp, tracks,
     output1 = subdirs[0]
     output2 = subdirs[1]
 
-    # Extract the column index of 'TRACK_INDEX' from the csv file.
-    # The column name cannot be used directly to extract the column values.
-    # The 'TRACK_INDEX' is used to refer to the frame's row numbers, we'll loop through these.
-    # track_idx = results_table.getColumnIndex(trackindex)
-    # tracks = results_table.getColumn(track_idx).tolist()
-    # duration_idx = results_table.getColumnIndex(trackduration)
-    # duration = results_table.getColumn(duration_idx).tolist()
-    # IJ.log("[1] {} \n[2] {}\n[3] ".format(track_idx, tracks))
+    maxduration = int( max([tracks[i][trackduration] for i in tracks]) )
 
-    # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack!
-    for i in tracks:  # This loops through all tracks. Use a custom 'range(0,1)' to test and save time!
+    # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack.
+    for i in tracks:  # This loops through all tracks. Use a custom 'tracks[0:5]' to test and save time!
+
         # Extract all needed row values.
         i_x = int(i[trackx] * 5.988)
         i_y = int(i[tracky] * 5.988)
+        i_id = int(i[trackid])
+        i_duration = int(i[trackduration] / 15)
+        i_start = int(i[trackstart] / 15)
+        i_stop = int(i[trackstop] / 15)
 
         # Now set an ROI according to the track's xy position in the hyperstack.
         imp.setRoi(i_x - roi_x / 2, i_y - roi_y / 2,  # upper left x, upper left y
                    roi_x, roi_y)  # roi x dimension, roi y dimension
 
-
-        # idx = int(i)
-        i_id = int(i[trackid])
-        # i_x = int(results_table.getValue(trackxlocation, idx) * 5.988)  # fix for calibration
-        # i_y = int(results_table.getValue(trackylocation, idx) * 5.988)  # fix for calibration
-        # i_start = int(results_table.getValue(trackstart, idx) / 15)
-        # i_stop = int(results_table.getValue(trackstop, idx) / 15)
-        # i_duration = int(results_table.getValue(trackduration, idx) / 15)
-        # i_fill_duration = int(max(duration) / 15 - i_duration)
-        i_start = int(i[trackstart] / 15)
-        i_stop = int(i[trackstop] / 15)
-
+        # Retrieve image dimensions.
         width, height, nChannels, nSlices, nFrames = imp.getDimensions()
 
         # And then crop (duplicate, actually) this ROI for the track's time duration.
-        IJ.log("\nCropping image with TRACK_INDEX: {}/{}".format(i_id, int(len(tracks))))
+        IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(i_id, int(len(tracks))))
         imp2 = Duplicator().run(imp,
                                 1,  # firstC
                                 nChannels,  # lastC
@@ -176,73 +170,29 @@ def croproi(imp, tracks,
                                 i_stop)  # lastT
 
         # Save the substack in the output directory
-        IJ.log("Save substack...")
         outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(i_id))
         IJ.saveAs(imp2, "Tiff", outfile)
 
-        # # Finally, if the user wants empty frames appended to get equal frame counts throughout:
-        # if add_empty_before and add_empty_after:
-        #     # Concatenate the stacks with empty stacks before and after.
-        #     IJ.log("Adding empty frames before and after...")
-        #     imp_empty = concatenatestack(imp2, i_start, nFrames - i_stop)
-        #     if imp_empty:
-        #         IJ.run(imp_empty, "Label...",
-        #                "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
-        #                                                                                                        nFrames))
-        #         outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
-        #         IJ.saveAs(imp_empty, "Tiff", outfile3)
-        #     else:
-        #         # Let's us know if this concatenation fails.
-        #         IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
+        # --- OPTIONS ---
+        # Add empty frames to the end of the stack if add_empty_after is True.
+        if add_empty_after:
 
-        # if not add_empty_before and add_empty_after:
-        #     # Concatenate the stacks with empty stacks after.
-        #     IJ.log("Adding empty frames after...")
+            delta = maxduration - i_duration
 
-        #     if i_fill_duration != 0:  # Check if the current iteration is not the longest track.
-        #         imp_empty = concatenatestack(imp2, 0, i_fill_duration)
-        #     elif i_fill_duration == 0:  # If it is the longest track, just return the stack as is.
-        #         imp_empty = imp2
-        #     else:
-        #         IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
+            try:
 
-        #     if imp_empty:
-        #         IJ.run(imp_empty, "Label...",
-        #                "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
-        #                                                                                                        nFrames))
-        #         outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
-        #         IJ.saveAs(imp_empty, "Tiff", outfile3)
-        #     else:
-        #         # Let's us know if this concatenation fails.
-        #         IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
+                if delta != 0:
+                    imp_empty = concatenatestack(imp2, 0, delta)
+                elif delta == 0:
+                    imp_empty = imp2
+            
+                IJ.run(imp_empty, "Label...",
+                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id, nFrames))
+                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
+                IJ.saveAs(imp_empty, "Tiff", outfile3)
 
-        # if add_empty_before and not add_empty_after:
-        #     # Concatenate the stacks with empty stacks before.
-        #     IJ.log("Adding empty frames before...")
-
-        #     if i_fill_duration != 0:  # Check if the current iteration is not the longest track.
-        #         imp_empty = concatenatestack(imp2, i_fill_duration)
-        #     elif i_fill_duration == 0:  # If it is the longest track, just return the stack as is.
-        #         imp_empty = imp2
-        #     else:
-        #         IJ.log("Track duration error at TRACK_ID: {}".format(i_id))
-
-        #     if imp_empty:
-        #         IJ.run(imp_empty, "Label...",
-        #                "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id,
-        #                                                                                                        nFrames))
-        #         outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
-        #         IJ.saveAs(imp_empty, "Tiff", outfile3)
-        #     else:
-        #         # Let's us know if this concatenation fails.
-        #         IJ.log("Concatenation failed at TRACK_ID: {}".format(i_id))
-
-        # Save the stack montage
-        if make_montage:
-            IJ.log("Making montage...")
-            mont = montage(imp_empty)
-            outfile2 = os.path.join(output2, "TRACK_ID_{}.tif".format(i_id))
-            IJ.saveAs(mont, "Tiff", outfile2)
+            except Exception as ex:
+                IJ.log("Something in opencsv() went wrong: {}".format(type(ex).__name__, ex.args))
 
 
 def _emptystack(imp, inframes=0):
@@ -281,6 +231,7 @@ def _emptystack(imp, inframes=0):
     return outstack
 
 #TODO only works for 2 channel images.
+#TODO tried to fix for multiple channels, not tested!
 def concatenatestack(imp, frames_before, frames_after):
     """Append empty frames (timepoints) before and after an input stack.
 
@@ -298,46 +249,53 @@ def concatenatestack(imp, frames_before, frames_after):
     """
 
     cal = imp.getCalibration()
-    imp_c1, imp_c2 = ChannelSplitter().split(imp)
+    channels = ChannelSplitter().split(imp)
 
     # If frames_before is 0, skip this step to prevent creation of an empty image
     # Also, split channels for correct concatenation in following step.
     if frames_before != 0:
         before = _emptystack(imp, frames_before)
         before.setCalibration(cal)
-        before_c1, before_c2 = ChannelSplitter().split(before)
+        befores = ChannelSplitter().split(before)
 
     # If frames_after is 0, skip this step to prevent creation of an empty image.
     # Also, split channels for correct concatenation in following step.
     if frames_after != 0:
         after = _emptystack(imp, frames_after)
         after.setCalibration(cal)
-        after_c1, after_c2 = ChannelSplitter().split(after)
+        # This might not even be needed, Concatenator seems to work with hyperstacks?:
+        afters = ChannelSplitter().split(after) 
 
     # Concatenate existing stacks and merge channels back to one file.
     # Start with the condition when _emptystack() has to be appended before and after imp.
     if frames_before != 0 and frames_after != 0:
-        # IJ.log ("In concatenatestack(): reached frames_before != 0 & frames_after != 0")
-        concat_c1 = Concatenator().run(before_c1, imp_c1, after_c1)
-        concat_c2 = Concatenator().run(before_c2, imp_c2, after_c2)
+
+        concat = [Concatenator().run(befores[i], channels[i], afters[i]) for i,j in enumerate(channels)]
+        # concat_c1 = Concatenator().run(before_c1, imp_c1, after_c1)
+        # concat_c2 = Concatenator().run(before_c2, imp_c2, after_c2)
+
     # Following the condition when _emptystack() has to be appended after imp alone.
     elif frames_before == 0 and frames_after != 0:
-        # IJ.log ("In concatenatestack(): reached frames_before == 0 & frames_after != 0")
-        concat_c1 = Concatenator().run(imp_c1, after_c1)
-        concat_c2 = Concatenator().run(imp_c2, after_c2)
+
+        concat = [Concatenator().run(channels[i], afters[i]) for i,j in enumerate(channels)]
+        # concat_c1 = Concatenator().run(imp_c1, after_c1)
+        # concat_c2 = Concatenator().run(imp_c2, after_c2)
+
     # Following the condition when _emptystack() has to be appended before imp alone.
     elif frames_before != 0 and frames_after == 0:
-        # IJ.log ("In concatenatestack(): reached frames_before != 0 & frames_after == 0")
-        concat_c1 = Concatenator().run(before_c1, imp_c1)
-        concat_c2 = Concatenator().run(before_c1, imp_c1)
+
+        concat = [Concatenator().run(befores[i], channels[i]) for i,j in enumerate(channels)]
+        # concat_c1 = Concatenator().run(before_c1, imp_c1)
+        # concat_c2 = Concatenator().run(before_c1, imp_c1)
+
     else:
+        # Weird way to catch exception, but ok.
         IJ.log("In concatenatestack(): reached else")
         return False
 
     # Now re-merge the channels and return the concatenated hyperstack.
-    concat_list = [concat_c1, concat_c2]
-    concat = RGBStackMerge().mergeHyperstacks(concat_list, False)  # boolean keep
-    return concat
+    impout = RGBStackMerge().mergeHyperstacks(concat, False)  # boolean keep
+    return impout
 
 
 # Simple function making a montage of the image hyperstack passed as argument
@@ -537,15 +495,8 @@ def main():
 
     croproi(imp, rt,
             outdir=outdir, subdirs=subdirs,
-            trackindex="TRACK_INDEX",
-            trackduration="TRACK_DURATION",
-            trackid="TRACK_ID",
-            trackx="TRACK_X_LOCATION",
-            tracky="TRACK_Y_LOCATION",
-            trackstart="TRACK_START",
-            trackstop="TRACK_STOP",
-            add_empty_before=False, add_empty_after=False,
-            make_montage=False, roi_x=150, roi_y=150)
+            add_empty_after=False,
+            roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
     # combinestacks(subdirs[0])
