@@ -139,7 +139,7 @@ def croproi(imp, tracks, outdir, subdirs, add_empty_after=False,
     output1 = subdirs[0]
     output2 = subdirs[1]
 
-    maxduration = int( max([tracks[i][trackduration] for i in tracks]) )
+    maxduration = int( max([tracks[i][trackduration] for i,j in enumerate(tracks)]) )
 
     # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack.
     for i in tracks:  # This loops through all tracks. Use a custom 'tracks[0:5]' to test and save time!
@@ -160,7 +160,7 @@ def croproi(imp, tracks, outdir, subdirs, add_empty_after=False,
         width, height, nChannels, nSlices, nFrames = imp.getDimensions()
 
         # And then crop (duplicate, actually) this ROI for the track's time duration.
-        IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(i_id, int(len(tracks))))
+        IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(i_id+1, int(len(tracks))))
         imp2 = Duplicator().run(imp,
                                 1,  # firstC
                                 nChannels,  # lastC
@@ -462,24 +462,23 @@ def combinestacks(directory, height=5):
     IJ.log("\nCombining stacks...")
     files = _readdirfiles(directory)
     groups = chunks(files, height)
+    IJ.log("Number of files: {}".format(len(files)))
 
     horiz = []
+    impout = ImagePlus()
+
     for i in range(0, len(groups)):
-        c1, c2 = _listsplitchannels(groups[i])
-        comb_c1 = _horcombine(c1)
-        comb_c2 = _horcombine(c2)
-        comb_list = [ImagePlus('c1', comb_c1), ImagePlus('c2', comb_c2)]
-        comb = RGBStackMerge().mergeChannels(comb_list, False)  # boolean keep
+        channels = _listsplitchannels(groups[i])
+        comb = [ ImagePlus('channel', _horcombine(channel)) for channel in channels ]
+        comb = RGBStackMerge().mergeChannels(comb, False)  # boolean keep
         horiz.append(comb)
 
     for i in range(0, len(horiz)):
-        c1, c2 = _listsplitchannels(horiz)
-        comb_c1 = _vercombine(c1)
-        comb_c2 = _vercombine(c2)
-        comb_list = [ImagePlus('c1', comb_c1), ImagePlus('c2', comb_c2)]
-        comb = RGBStackMerge().mergeChannels(comb_list, False)  # boolean keep
+        channels = _listsplitchannels(horiz)
+        comb = [ ImagePlus('channel', _vercombine(channel)) for channel in channels ]
+        impout = RGBStackMerge().mergeChannels(comb, False)  # boolean keep
 
-    comb.show()
+    impout.show()
 
 
 # The main loop, call wanted functions.
@@ -499,7 +498,7 @@ def main():
             roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
-    # combinestacks(subdirs[0])
+    combinestacks(outdir)
 
 
 # Execute main()
