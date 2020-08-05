@@ -398,15 +398,29 @@ def _listsplitchannels(collection):
         One list of hyperstacks per channel.
     """
 
-    coll_c1 = []
-    coll_c2 = []
+    # coll_c1 = []
+    # coll_c2 = []
+    nChannels = collection[1].getNChannels()
+    outlist = [[]] * nChannels
 
     for stack in collection:
-        c1, c2 = ChannelSplitter().split(stack)
-        coll_c1.append(c1.getImageStack())
-        coll_c2.append(c2.getImageStack())
+        channels = ChannelSplitter().split(stack)
+        IJ.log("channels: {}".format(channels))
 
-    return coll_c1, coll_c2
+        for i in range(len(channels)):
+            channels[i].show()
+            outlist[i].append(channels[i].getImageStack())
+
+    IJ.log("listsplitfiles: {}".format(outlist))
+    ImagePlus('c', outlist[0][1]).show()
+    ImagePlus('c', outlist[1][1]).show()
+
+    # for stack in collection:
+    #     c1, c2 = ChannelSplitter().split(stack)
+    #     coll_c1.append(c1.getImageStack())
+    #     coll_c2.append(c2.getImageStack())
+
+    return outlist
 
 
 def _horcombine(imp_collection):
@@ -447,7 +461,6 @@ def _vercombine(imp_collection):
     return comb
 
 
-# TODO: Currently only handles input files with 2 channels. Fix if broader application is needed.
 def combinestacks(directory, height=5):
     """Combine all tiff stacks in a directory to a panel.
 
@@ -492,13 +505,13 @@ def main():
     rt = getresults(rt)
     imp = WindowManager.getCurrentImage()
 
-    croproi(imp, rt,
-            outdir=outdir, subdirs=subdirs,
-            add_empty_after=False,
-            roi_x=150, roi_y=150)
+    # croproi(imp, rt,
+    #         outdir=outdir, subdirs=subdirs,
+    #         add_empty_after=False,
+    #         roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
-    combinestacks(outdir)
+    combinestacks(outdir, height=8)
 
 
 # Execute main()
