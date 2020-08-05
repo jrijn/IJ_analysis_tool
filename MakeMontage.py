@@ -61,11 +61,20 @@ def makemontage(imp, hsize=5, vsize=5, increment = 1):
     gridsize = hsize * vsize
 
     def _channelmontage(_imp):  
+        """Makes a montage of a single channel ImagePlus object.
+
+        Args:
+            _imp (ImagePlus): A single channel ImagePlus object.
+
+        Returns:
+            ImagePlus: A montage of the one input channel.
+        """        
         dims = _imp.getDimensions() # width, height, nChannels, nSlices, nFrames
         frames = listProduct(dims[2:])
         if frames > gridsize: frames = gridsize
         _montage = MontageMaker().makeMontage2(_imp, hsize, vsize, 1.00, 1, frames, increment, 0, True)
         return _montage
+
 
     name = imp.getTitle()   
     channels = ChannelSplitter().split(imp)
@@ -88,20 +97,9 @@ def _saveimage(imp, outdir):
 
 
 def main():
-    # def _makestack(implist):
-    #     stack = ImageStack()
-    #     name = implist[0].getTitle()
-    #     for imp in implist:
-    #         IJ.log("makestack: {}".format(imp))
-    #         stack.addSlice(imp.getProcessor())
-    #     stack = ImagePlus(name, stack)
-    #     return stack
-
-
     indir = IJ.getDirectory("input directory")
     outdir = IJ.getDirectory("output directory")
     files = sorted(os.listdir(indir))
-
     IJ.log("files: {}".format(files))
 
     montages = []
