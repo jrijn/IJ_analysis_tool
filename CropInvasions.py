@@ -77,6 +77,9 @@ def opencsv():
 def getresults(rt):
     """Retrieve IJ ResultsTable object and return table as list of dictionaries.
 
+    This makes it much easier to iterate through the rows of a ResultsTable object 
+    from within ImageJ.
+
     Args:
         rt (ij.measure.ResultsTable): An Imagej ResultsTable object.
 
@@ -85,8 +88,8 @@ def getresults(rt):
         
         for example:
             [
-            {'column1' : 'value', 'column2' : 'value'},
-            {'column1' : 'value', 'column2' : 'value'},
+            {'column1' : 'value', 'column2' : 'value', ...},
+            {'column1' : 'value', 'column2' : 'value', ...},
             ...,
             ]
     """    
@@ -146,8 +149,8 @@ def croproi(imp, tracks, outdir, subdirs, add_empty_after=False,
     for i in tracks:  # This loops through all tracks. Use a custom 'tracks[0:5]' to test and save time!
 
         # Extract all needed row values.
-        i_x = int(i[trackx] * 5.988)
-        i_y = int(i[tracky] * 5.988)
+        i_x = int(i[trackx] * 5.988) # TODO fix for calibration.
+        i_y = int(i[tracky] * 5.988) # TODO fix for calibration.
         i_id = int(i[trackid])
         i_duration = int(i[trackduration] / 15)
         i_start = int(i[trackstart] / 15)
@@ -297,40 +300,6 @@ def concatenatestack(imp, frames_before, frames_after):
     # Now re-merge the channels and return the concatenated hyperstack.
     impout = RGBStackMerge().mergeHyperstacks(concat, False)  # boolean keep
     return impout
-
-
-# Simple function making a montage of the image hyperstack passed as argument
-def montage(imp):
-    """Makes a montage of the input hyperstack.
-
-    Simple function making a montage of the image hyperstack passed as argument.
-
-    Args:
-        imp: ImagePlus hyperstack object.
-
-    Returns:
-        An ImagePlus hyperstack object.
-    """
-
-    width, height, nChannels, nSlices, nFrames = imp.getDimensions()
-
-    channels = ChannelSplitter().split(imp)
-    montages = []
-    for channel in channels:
-        c = MontageMaker().makeMontage2(channel,
-                                               nFrames,  # int columns
-                                               nSlices,  # int rows
-                                               1.00,  # double scale
-                                               1,  # int first
-                                               nFrames,  # int last
-                                               1,  # int inc
-                                               0,  # int borderWidth
-                                               False)  # boolean labels)
-        montages.append(c)
-
-    # Now re-merge the channels and return the montage.
-    montage = RGBStackMerge().mergeChannels(montages, False)  # boolean keep
-    return montage
 
 
 def chunks(seq, num):
