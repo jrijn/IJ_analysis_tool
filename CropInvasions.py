@@ -19,35 +19,6 @@ import ij.plugin.Concatenator as Concatenator
 # import ij.plugin.filter.BackgroundSubtracter as BackgroundSubtracter
 # import ij.plugin.filter.EDM as EDM
 import os
-# import math
-
-
-def preparedir(outdir, dir1="output1", dir2="output2"):
-    """Prepares input and output directories of this module.
-
-    Simple function which prepares the output directory and input .csv file.
-    If the subfolders ./montage and ./with_empty_stacks do not exist its makes them.
-
-    Args:
-        outdir: Path of the chosen output directory.
-        dir1: Name of the first output subdirectory. Defaults to 'output1'.
-        dir2: Name of the first output subdirectory. Defaults to 'output2'.
-
-    Returns:
-        A list containing the path strings of both output directories:
-        [path_of_output1, path_of_output2]
-    """
-
-    # Create the output subdirectory paths, if they do not exist already.
-    out1 = os.path.join(outdir, dir1)
-    out2 = os.path.join(outdir, dir2)
-    if not os.path.isdir(out1):
-        os.mkdir(out1)
-    if not os.path.isdir(out2):
-        os.mkdir(out2)
-
-    out = [out1, out2]
-    return out
 
 
 def opencsv():
@@ -107,31 +78,22 @@ def getresults(rt):
         IJ.log("Something in getresults() went wrong: {}".format(type(ex).__name__, ex.args))
 
 
-def croproi(imp, tracks, outdir, subdirs, add_empty_after=False,
-            trackindex="TRACK_INDEX",
-            trackduration="TRACK_DURATION",
-            trackid="TRACK_ID",
-            trackx="TRACK_X_LOCATION",
-            tracky="TRACK_Y_LOCATION",
-            trackstart="TRACK_START",
-            trackstop="TRACK_STOP",
+def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
+            trackx="TRACK_X_LOCATION", tracky="TRACK_Y_LOCATION",
+            trackstart="TRACK_START", trackstop="TRACK_STOP",
             roi_x=150, roi_y=150):
     """Function cropping ROIs from an ImagePlus stack based on a ResultsTable object.
 
     This function crops square ROIs from a hyperstack based on locations defined in the ResultsTable.
     The ResultsTable should, however make sense. The following headings are required:
 
-    "TRACK_INDEX", "TRACK_DURATION", "TRACK_ID", "TRACK_X_LOCATION", "TRACK_Y_LOCATION", "TRACK_START", "TRACK_STOP"
+    "TRACK_INDEX", "TRACK_X_LOCATION", "TRACK_Y_LOCATION", "TRACK_START", "TRACK_STOP"
 
     Args:
         imp: An ImagePlus hyperstack (timelapse).
-        results_table: A ResultsTable object with the proper column names.
+        tracks: A getresults(ResultsTable) object (from Track statistics.csv) with the proper column names.
         outdir: The primary output directory.
-        subdirs: A list of two paths for the output of this funcion. ([path_of_output1, path_of_output2])
-        add_empty_after: Add empty frames after to make all output stacks the same lenght.
         trackindex: A unique track identifier. Defaults to "TRACK_INDEX"
-        trackduration: The tracks duration. Defaults to "TRACK_DURATION".
-        trackid: The track ID, will be used in the filename. Defaults to "TRACK_ID".
         trackxlocation: Defaults to "TRACK_X_LOCATION".
         trackylocation: Defaults to "TRACK_Y_LOCATION".
         trackstart: Defaults to "TRACK_START".
@@ -140,19 +102,13 @@ def croproi(imp, tracks, outdir, subdirs, add_empty_after=False,
         roi_y: Height of the ROI.
     """
 
-    output1 = subdirs[0]
-    output2 = subdirs[1]
-
-    maxduration = int( max([tracks[i][trackduration] for i,j in enumerate(tracks)]) )
-
-    # Now loop through all the tracks, extract the track position, set an ROI and crop the hyperstack.
+    # Loop through all the tracks, extract the track position, set an ROI and crop the hyperstack.
     for i in tracks:  # This loops through all tracks. Use a custom 'tracks[0:5]' to test and save time!
 
         # Extract all needed row values.
+        i_id = int(i[trackindex])
         i_x = int(i[trackx] * 5.988) # TODO fix for calibration.
         i_y = int(i[tracky] * 5.988) # TODO fix for calibration.
-        i_id = int(i[trackid])
-        i_duration = int(i[trackduration] / 15)
         i_start = int(i[trackstart] / 15)
         i_stop = int(i[trackstop] / 15)
 
@@ -165,141 +121,12 @@ def croproi(imp, tracks, outdir, subdirs, add_empty_after=False,
 
         # And then crop (duplicate, actually) this ROI for the track's time duration.
         IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(i_id+1, int(len(tracks))))
-        imp2 = Duplicator().run(imp,
-                                1,  # firstC
-                                nChannels,  # lastC
-                                1,  # firstZ
-                                nSlices,  # lastZ
-                                i_start,  # firstT
-                                i_stop)  # lastT
+        # Duplicator().run(firstC, lastC, firstZ, lastZ, firstT, lastT)
+        imp2 = Duplicator().run(imp, 1, nChannels, 1, nSlices, i_start, i_stop)  
 
         # Save the substack in the output directory
         outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(i_id))
         IJ.saveAs(imp2, "Tiff", outfile)
-
-        # --- OPTIONS ---
-        # Add empty frames to the end of the stack if add_empty_after is True.
-        if add_empty_after:
-
-            delta = maxduration - i_duration
-
-            try:
-
-                if delta != 0:
-                    imp_empty = concatenatestack(imp2, 0, delta)
-                elif delta == 0:
-                    imp_empty = imp2
-            
-                IJ.run(imp_empty, "Label...",
-                       "format=Text starting=0 interval=1 x=5 y=20 font=12 text=TRACK_ID:{} range=1-{}".format(i_id, nFrames))
-                outfile3 = os.path.join(output1, "TRACK_ID_{}.tif".format(i_id))
-                IJ.saveAs(imp_empty, "Tiff", outfile3)
-
-            except Exception as ex:
-                IJ.log("Something in opencsv() went wrong: {}".format(type(ex).__name__, ex.args))
-
-
-def _emptystack(imp, inframes=0):
-    """Create an empty stack with the dimensions of imp.
-
-    This function creates an empty stack with black images, with the same dimensions of input image 'imp'.
-    The argument inframes allows one to set the number of frames the stack should have. This defaults to the
-    input frame depth through an if statement.
-
-    Args:
-        imp: ImagePlus hyperstack object.
-        inframes: The total framedepth of the returned stack. Default is 0.
-
-    Returns:
-        An ImagePlus hyperstack object.
-    """
-
-    # Start by reading the calibration and dimensions of the input stack to correspond to the output stack.
-    cal = imp.getCalibration()
-    width, height, nChannels, nSlices, nFrames = imp.getDimensions()
-
-    # This defaults inframes to the input frame depth.
-    if inframes == 0:
-        inframes = nFrames
-
-    # Create the new stack according to the desired dimensions.
-    outstack = IJ.createHyperStack("empty_stack",
-                                   width,  # width
-                                   height,  # height
-                                   nChannels,  # channels
-                                   nSlices,  # slices
-                                   inframes,  # frames
-                                   16)
-    # Re-apply the calibration and return the empty stack.
-    outstack.setCalibration(cal)
-    return outstack
-
-#TODO only works for 2 channel images.
-#TODO tried to fix for multiple channels, not tested!
-def concatenatestack(imp, frames_before, frames_after):
-    """Append empty frames (timepoints) before and after an input stack.
-
-    This function is used to append a stack of empty frames before and after the input stack.
-    imp is the input stack, frames_before determines the number of frames to be appended in front,
-    frames_after determines the number of frames to be appended at the end.
-
-    Args:
-        imp: ImagePlus hyperstack object.
-        frames_before: the number of frames to be appended before.
-        frames_after: the number of frames to be appended after.
-
-    Returns:
-        An ImagePlus hyperstack object.
-    """
-
-    cal = imp.getCalibration()
-    channels = ChannelSplitter().split(imp)
-
-    # If frames_before is 0, skip this step to prevent creation of an empty image
-    # Also, split channels for correct concatenation in following step.
-    if frames_before != 0:
-        before = _emptystack(imp, frames_before)
-        before.setCalibration(cal)
-        befores = ChannelSplitter().split(before)
-
-    # If frames_after is 0, skip this step to prevent creation of an empty image.
-    # Also, split channels for correct concatenation in following step.
-    if frames_after != 0:
-        after = _emptystack(imp, frames_after)
-        after.setCalibration(cal)
-        # This might not even be needed, Concatenator seems to work with hyperstacks?:
-        afters = ChannelSplitter().split(after) 
-
-    # Concatenate existing stacks and merge channels back to one file.
-    # Start with the condition when _emptystack() has to be appended before and after imp.
-    if frames_before != 0 and frames_after != 0:
-
-        concat = [Concatenator().run(befores[i], channels[i], afters[i]) for i,j in enumerate(channels)]
-        # concat_c1 = Concatenator().run(before_c1, imp_c1, after_c1)
-        # concat_c2 = Concatenator().run(before_c2, imp_c2, after_c2)
-
-    # Following the condition when _emptystack() has to be appended after imp alone.
-    elif frames_before == 0 and frames_after != 0:
-
-        concat = [Concatenator().run(channels[i], afters[i]) for i,j in enumerate(channels)]
-        # concat_c1 = Concatenator().run(imp_c1, after_c1)
-        # concat_c2 = Concatenator().run(imp_c2, after_c2)
-
-    # Following the condition when _emptystack() has to be appended before imp alone.
-    elif frames_before != 0 and frames_after == 0:
-
-        concat = [Concatenator().run(befores[i], channels[i]) for i,j in enumerate(channels)]
-        # concat_c1 = Concatenator().run(before_c1, imp_c1)
-        # concat_c2 = Concatenator().run(before_c1, imp_c1)
-
-    else:
-        # Weird way to catch exception, but ok.
-        IJ.log("In concatenatestack(): reached else")
-        return False
-
-    # Now re-merge the channels and return the concatenated hyperstack.
-    impout = RGBStackMerge().mergeHyperstacks(concat, False)  # boolean keep
-    return impout
 
 
 def chunks(seq, num):
@@ -324,73 +151,6 @@ def chunks(seq, num):
         last += avg
 
     return out
-
-
-# def _readdirfiles(directory, nChannels=2, nSlices=1):
-#     """Import tiff files from a directory.
-
-#     This function reads all .tiff files from a directory and returns them as a list of hyperstacks.
-
-#     Args:
-#         directory: The path to a directory containing the tiff files.
-#         nChannels: The number of channels sequentially contained in the stack. Defaults to 2.
-#         nSlices: The number of slices sequentially contained in the stack. Defaults to 1.
-
-#     Returns:
-#         A list of hyperstacks.
-#     """
-
-#     dir = os.listdir(directory)
-#     dirfiles = []
-
-#     for file in dir:
-#         if file.endswith('.tif') or file.endswith('.tiff'):
-#             path = os.path.join(directory, file)
-#             stack = ImagePlus(path)
-#             stack = HyperStackConverter().toHyperStack(stack,
-#                                                        nChannels,  # channels
-#                                                        nSlices,  # slices
-#                                                        stack.getNFrames())  # frames
-#             dirfiles.append(stack)
-
-#     return dirfiles
-
-# #TODO Only works for 2-channel images.
-# def _listsplitchannels(collection):
-#     """Split channels of a list of hyperstacks.
-
-#     This function splits a list of 2 channel hyperstacks in two separate lists per channel.
-
-#     Args:
-#         collection: A list of hyperstacks.
-
-#     Returns:
-#         One list of hyperstacks per channel.
-#     """
-
-#     # coll_c1 = []
-#     # coll_c2 = []
-#     # nChannels = collection[1].getNChannels()
-#     outlist = []
-
-#     for stack in collection:
-#         channels = ChannelSplitter().split(stack)
-#         # IJ.log("channels: {}".format(channels))
-
-#         for i in range(len(channels)):
-#             # channels[i].show()
-#             outlist[i].append(channels[i].getImageStack())
-
-#     # IJ.log("listsplitfiles: {}".format(outlist))
-#     ImagePlus('c', outlist[0][1]).show()
-#     ImagePlus('c', outlist[1][1]).show()
-
-#     # for stack in collection:
-#     #     c1, c2 = ChannelSplitter().split(stack)
-#     #     coll_c1.append(c1.getImageStack())
-#     #     coll_c2.append(c2.getImageStack())
-
-#     return outlist
 
 
 def _horcombine(imp_collection):
@@ -479,17 +239,16 @@ def combinestacks(directory, height=5):
 def main():
     # Get the wanted output directory and prepare subdirectories for output.
     outdir = IJ.getDirectory("output directory")
-    subdirs = preparedir(outdir, dir1="with_empty_stacks", dir2="montage")
 
-    # Open the 'Track statistics.csv' input file and run main crop function.
+    # Open the 'Track statistics.csv' input file and format as getresults() dictionary.
     rt = opencsv()
     rt = getresults(rt)
+
+    # Retrieve the current image as input (source) image.
     imp = WindowManager.getCurrentImage()
 
-    croproi(imp, rt,
-            outdir=outdir, subdirs=subdirs,
-            add_empty_after=False,
-            roi_x=150, roi_y=150)
+    # Run the main crop function on the source image.
+    croproi(imp, tracks=rt, outdir=outdir, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
     combinestacks(outdir, height=8)
