@@ -1,5 +1,8 @@
-##This toolbox evolved from Jens Eriksson's Collective Migration Buddy v2.0 (https://github.com/Oftatkofta/ImageJ-plugins)
-##Jorik van Rijn, 2019, Uppsala University
+# '''This toolbox evolved from Jens Eriksson's Collective Migration Buddy v2.0 
+# (https://github.com/Oftatkofta/ImageJ-plugins)
+# 
+# Jorik van Rijn, 2019, Uppsala University'''
+
 
 from ij.plugin import ZProjector, Duplicator, HyperStackConverter, ImageCalculator
 from ij import WindowManager as WindowManager
