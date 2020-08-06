@@ -1,4 +1,5 @@
 import ij.IJ as IJ
+import ij.io.Opener as Opener
 import ij.ImagePlus as ImagePlus
 import ij.ImageStack as ImageStack
 import ij.WindowManager as WindowManager
@@ -356,71 +357,71 @@ def chunks(seq, num):
     return out
 
 
-def _readdirfiles(directory, nChannels=2, nSlices=1):
-    """Import tiff files from a directory.
+# def _readdirfiles(directory, nChannels=2, nSlices=1):
+#     """Import tiff files from a directory.
 
-    This function reads all .tiff files from a directory and returns them as a list of hyperstacks.
+#     This function reads all .tiff files from a directory and returns them as a list of hyperstacks.
 
-    Args:
-        directory: The path to a directory containing the tiff files.
-        nChannels: The number of channels sequentially contained in the stack. Defaults to 2.
-        nSlices: The number of slices sequentially contained in the stack. Defaults to 1.
+#     Args:
+#         directory: The path to a directory containing the tiff files.
+#         nChannels: The number of channels sequentially contained in the stack. Defaults to 2.
+#         nSlices: The number of slices sequentially contained in the stack. Defaults to 1.
 
-    Returns:
-        A list of hyperstacks.
-    """
+#     Returns:
+#         A list of hyperstacks.
+#     """
 
-    dir = os.listdir(directory)
-    dirfiles = []
+#     dir = os.listdir(directory)
+#     dirfiles = []
 
-    for file in dir:
-        if file.endswith('.tif') or file.endswith('.tiff'):
-            path = os.path.join(directory, file)
-            stack = ImagePlus(path)
-            stack = HyperStackConverter().toHyperStack(stack,
-                                                       nChannels,  # channels
-                                                       nSlices,  # slices
-                                                       stack.getNFrames())  # frames
-            dirfiles.append(stack)
+#     for file in dir:
+#         if file.endswith('.tif') or file.endswith('.tiff'):
+#             path = os.path.join(directory, file)
+#             stack = ImagePlus(path)
+#             stack = HyperStackConverter().toHyperStack(stack,
+#                                                        nChannels,  # channels
+#                                                        nSlices,  # slices
+#                                                        stack.getNFrames())  # frames
+#             dirfiles.append(stack)
 
-    return dirfiles
+#     return dirfiles
 
-#TODO Only works for 2-channel images.
-def _listsplitchannels(collection):
-    """Split channels of a list of hyperstacks.
+# #TODO Only works for 2-channel images.
+# def _listsplitchannels(collection):
+#     """Split channels of a list of hyperstacks.
 
-    This function splits a list of 2 channel hyperstacks in two separate lists per channel.
+#     This function splits a list of 2 channel hyperstacks in two separate lists per channel.
 
-    Args:
-        collection: A list of hyperstacks.
+#     Args:
+#         collection: A list of hyperstacks.
 
-    Returns:
-        One list of hyperstacks per channel.
-    """
+#     Returns:
+#         One list of hyperstacks per channel.
+#     """
 
-    # coll_c1 = []
-    # coll_c2 = []
-    nChannels = collection[1].getNChannels()
-    outlist = [[]] * nChannels
+#     # coll_c1 = []
+#     # coll_c2 = []
+#     # nChannels = collection[1].getNChannels()
+#     outlist = []
 
-    for stack in collection:
-        channels = ChannelSplitter().split(stack)
-        IJ.log("channels: {}".format(channels))
+#     for stack in collection:
+#         channels = ChannelSplitter().split(stack)
+#         # IJ.log("channels: {}".format(channels))
 
-        for i in range(len(channels)):
-            channels[i].show()
-            outlist[i].append(channels[i].getImageStack())
+#         for i in range(len(channels)):
+#             # channels[i].show()
+#             outlist[i].append(channels[i].getImageStack())
 
-    IJ.log("listsplitfiles: {}".format(outlist))
-    ImagePlus('c', outlist[0][1]).show()
-    ImagePlus('c', outlist[1][1]).show()
+#     # IJ.log("listsplitfiles: {}".format(outlist))
+#     ImagePlus('c', outlist[0][1]).show()
+#     ImagePlus('c', outlist[1][1]).show()
 
-    # for stack in collection:
-    #     c1, c2 = ChannelSplitter().split(stack)
-    #     coll_c1.append(c1.getImageStack())
-    #     coll_c2.append(c2.getImageStack())
+#     # for stack in collection:
+#     #     c1, c2 = ChannelSplitter().split(stack)
+#     #     coll_c1.append(c1.getImageStack())
+#     #     coll_c2.append(c2.getImageStack())
 
-    return outlist
+#     return outlist
 
 
 def _horcombine(imp_collection):
@@ -432,14 +433,22 @@ def _horcombine(imp_collection):
     Returns:
         A horizontally combined stack of the input images.
     """
-
     comb = imp_collection[0]
+    comb_channels = ChannelSplitter().split(comb)
+    comb_channels = [ i.getImageStack() for i in comb_channels]
 
     for imp in imp_collection:
-        if imp != imp_collection[0]:
-            comb = StackCombiner().combineHorizontally(comb, imp)
 
-    return comb
+        if imp == imp_collection[0]:
+            continue
+
+        imp_channels = ChannelSplitter().split(imp)
+        imp_channels = [ i.getImageStack() for i in imp_channels]
+        comb_channels = [ StackCombiner().combineHorizontally(i, j) for i, j in zip(comb_channels, imp_channels) ]
+
+    comb_channels = [ ImagePlus("C{}".format(i+1), channel) for i, channel in enumerate(comb_channels) ]
+    impout = RGBStackMerge().mergeChannels(comb_channels, False)  # boolean keep
+    return impout
 
 
 def _vercombine(imp_collection):
@@ -451,14 +460,22 @@ def _vercombine(imp_collection):
     Returns:
         A vertically combined stack of the input images.
     """
-
     comb = imp_collection[0]
+    comb_channels = ChannelSplitter().split(comb)
+    comb_channels = [ i.getImageStack() for i in comb_channels ]
 
     for imp in imp_collection:
-        if imp != imp_collection[0]:
-            comb = StackCombiner().combineVertically(comb, imp)
 
-    return comb
+        if imp == imp_collection[0]:
+            continue
+
+        imp_channels = ChannelSplitter().split(imp)
+        imp_channels = [ i.getImageStack() for i in imp_channels]
+        comb_channels = [ StackCombiner().combineVertically(i, j) for i, j in zip(comb_channels, imp_channels) ]
+
+    comb_channels = [ ImagePlus("C{}".format(i+1), channel) for i, channel in enumerate(comb_channels) ]
+    impout = RGBStackMerge().mergeChannels(comb_channels, False)  # boolean keep
+    return impout
 
 
 def combinestacks(directory, height=5):
@@ -473,25 +490,20 @@ def combinestacks(directory, height=5):
     """
 
     IJ.log("\nCombining stacks...")
-    files = _readdirfiles(directory)
-    groups = chunks(files, height)
+    files = [f for f in sorted(os.listdir(directory)) if os.path.isfile(os.path.join(directory, f))]
     IJ.log("Number of files: {}".format(len(files)))
+    groups = chunks(files, height)
+    # imp = Opener().openImage(indir, imfile)
 
     horiz = []
-    impout = ImagePlus()
+    for group in groups:
+        h = [ Opener().openImage(directory, imfile) for imfile in group ]
+        h = _horcombine(h)
+        # h.show()
+        horiz.append(h)
 
-    for i in range(0, len(groups)):
-        channels = _listsplitchannels(groups[i])
-        comb = [ ImagePlus('channel', _horcombine(channel)) for channel in channels ]
-        comb = RGBStackMerge().mergeChannels(comb, False)  # boolean keep
-        horiz.append(comb)
-
-    for i in range(0, len(horiz)):
-        channels = _listsplitchannels(horiz)
-        comb = [ ImagePlus('channel', _vercombine(channel)) for channel in channels ]
-        impout = RGBStackMerge().mergeChannels(comb, False)  # boolean keep
-
-    impout.show()
+    montage = _vercombine(horiz)
+    montage.show()
 
 
 # The main loop, call wanted functions.
@@ -505,10 +517,10 @@ def main():
     rt = getresults(rt)
     imp = WindowManager.getCurrentImage()
 
-    # croproi(imp, rt,
-    #         outdir=outdir, subdirs=subdirs,
-    #         add_empty_after=False,
-    #         roi_x=150, roi_y=150)
+    croproi(imp, rt,
+            outdir=outdir, subdirs=subdirs,
+            add_empty_after=False,
+            roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
     combinestacks(outdir, height=8)
