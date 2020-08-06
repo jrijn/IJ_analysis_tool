@@ -14,10 +14,6 @@ import ij.plugin.MontageMaker as MontageMaker
 import ij.plugin.StackCombiner as StackCombiner
 import ij.plugin.Duplicator as Duplicator
 import ij.plugin.Concatenator as Concatenator
-# import ij.plugin.Thresholder as Thresholder
-# import ij.plugin.filter.ParticleAnalyzer as ParticleAnalyzer
-# import ij.plugin.filter.BackgroundSubtracter as BackgroundSubtracter
-# import ij.plugin.filter.EDM as EDM
 import os
 
 
@@ -166,6 +162,7 @@ def _horcombine(imp_collection):
     comb_channels = ChannelSplitter().split(comb)
     comb_channels = [ i.getImageStack() for i in comb_channels]
 
+
     for imp in imp_collection:
 
         if imp == imp_collection[0]:
@@ -222,7 +219,6 @@ def combinestacks(directory, height=5):
     files = [f for f in sorted(os.listdir(directory)) if os.path.isfile(os.path.join(directory, f))]
     IJ.log("Number of files: {}".format(len(files)))
     groups = chunks(files, height)
-    # imp = Opener().openImage(indir, imfile)
 
     horiz = []
     for group in groups:
