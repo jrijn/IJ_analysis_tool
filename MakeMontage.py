@@ -93,7 +93,7 @@ def _saveimage(imp, outdir):
     """        
     name = imp.getTitle()
     outfile = os.path.join(outdir, "{}.jpg".format(name))
-    IJ.saveAs(imp, "Jpeg", outfile)
+    IJ.saveAs(imp, "Tiff", outfile)
 
 
 def main():
@@ -104,11 +104,14 @@ def main():
 
     montages = []
     for imfile in files:
+
+    	IJ.log("File: {}/{}".format(files.index(imfile)+1, len(files)))
         
         if imfile.endswith(".tif"):
             imp = Opener().openImage(indir, imfile)
-            montage = makemontage(imp, hsize=6, vsize=6)
+            montage = makemontage(imp, hsize=6, vsize=6, increment=2)
             _saveimage(montage, outdir)
 
+#	IJ.log("Finished")
 
 main()

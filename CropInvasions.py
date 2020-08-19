@@ -237,14 +237,14 @@ def main():
     outdir = IJ.getDirectory("output directory")
 
     # Open the 'Track statistics.csv' input file and format as getresults() dictionary.
-    rt = opencsv()
-    rt = getresults(rt)
+#    rt = opencsv()
+#    rt = getresults(rt)
 
     # Retrieve the current image as input (source) image.
-    imp = WindowManager.getCurrentImage()
+#    imp = WindowManager.getCurrentImage()
 
     # Run the main crop function on the source image.
-    croproi(imp, tracks=rt, outdir=outdir, roi_x=150, roi_y=150)
+#    croproi(imp, tracks=rt, outdir=outdir, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
     combinestacks(outdir, height=8)
