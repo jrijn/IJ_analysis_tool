@@ -186,6 +186,7 @@ def croppoints(imp, spots, outdir, roi_x=150, roi_y=150,
 
     def _cropSingleTrack(ispots):
         outstack = ImageStack()
+        outchannels = [] * dims[2]
 
         for j in ispots:
 
@@ -205,8 +206,10 @@ def croppoints(imp, spots, outdir, roi_x=150, roi_y=150,
             imp2 = Duplicator().run(imp, 1, dims[2], 1, dims[3], j_t, j_t)  # firstC, lastC, firstZ, lastZ, firstT, lastT
 
             # Append this frame to the tracks output stack.
-            imp2 = imp2.getProcessor()
-            out.addSlice("slice", imp2)
+            channels = ChannelSplitter.split(imp2)
+            channels = [ channel.getProcessor() for channel in channels ]
+            # TODO: finish fixing for nChannels
+            outstack.addSlice("slice", imp2)
         
         return outstack
 
@@ -214,6 +217,7 @@ def croppoints(imp, spots, outdir, roi_x=150, roi_y=150,
     # START OF MAIN FUNCTION.
     # Store the stack dimensions.
     dims = imp.getDimensions() # width, height, nChannels, nSlices, nFrames
+    IJ.log("Dimensions width, height, nChannels, nSlices, nFrames: \n{}\n".format(dims))
 
     # Add a black frame around the stack to ensure the cropped roi's are never out of view.
     expand_x = dims[0] + roi_x
@@ -222,14 +226,15 @@ def croppoints(imp, spots, outdir, roi_x=150, roi_y=150,
 
     # Retrieve all unique track ids. This is what we loop through.
     track_ids = set([ track[trackid] for track in spots ])
+    track_ids = list(track_ids)
 
     # 1: ----- MAIN LOOP -----
     # This loop loops through the unique set of TRACK_IDs from the results table.
-    for i in track_ids:
+    for i in track_ids[0:5]:
         
         # Extract all spots (rows) with TRACK_ID == i.
         trackspots = [ spot for spot in spots if spot[trackid] == i ]
-        IJ.log ("TRACK_ID: {}/{}".format(i, len(trackspots))) # Some feedback
+        IJ.log ("TRACK_ID: {}/{}".format(int(i+1), len(track_ids))) # Some feedback
 
         # Crop the spots of the current TRACK_ID.
         out = _cropSingleTrack(trackspots)
@@ -257,7 +262,7 @@ def main():
     croppoints(imp, spots=rt, outdir=outdir, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
-    # combinestacks(outdir, height=8)
+    # combinestacks(outdir, height=8) 
 
 
 # Execute main()
