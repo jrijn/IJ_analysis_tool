@@ -14,6 +14,7 @@ import ij.plugin.MontageMaker as MontageMaker
 import ij.plugin.StackCombiner as StackCombiner
 import ij.plugin.Duplicator as Duplicator
 import ij.plugin.Concatenator as Concatenator
+import ij.plugin.CanvasResizer as CanvasResizer
 import os
 import math
 
@@ -117,7 +118,6 @@ def checkcal(imp):
         frame_interval = calibration.frameInterval
 
 
-
 def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
             trackx="TRACK_X_LOCATION", tracky="TRACK_Y_LOCATION",
             trackstart="TRACK_START", trackstop="TRACK_STOP",
@@ -169,166 +169,123 @@ def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
         IJ.saveAs(imp2, "Tiff", outfile)
 
 
-
-# TODO: There's a lot going on, might want to try and split this up in separate functions.
-# TODO: Clean up the mess.
-def croppoints(imp, tracks, outdir, roi_x=150, roi_y=150,
-               trackid="TRACK_ID", trackxlocation="POSITION_X", trackylocation="POSITION_Y",
-               tracktlocation="FRAME"):
-    """Function cropping ROIs from an ImagePlus stack based on a ResultsTable object.
-
-    This function crops square ROIs from a hyperstack based on locations defined in the ResultsTable.
-    The results table should be the Spots in 'tracks statistics.csv'.
+def croppoints(imp, spots, outdir, roi_x=150, roi_y=150,
+               trackid="TRACK_ID", trackxlocation="POSITION_X", trackylocation="POSITION_Y", tracktlocation="FRAME"):
+    """Function to follow and crop the individual spots within a trackmate "Spots statistics.csv" file.
 
     Args:
-        imp: An ImagePlus hyperstack (timelapse).
-        results_table: A ResultsTable object with the proper column names.
-        outdir: The primary output directory.
-        roi_x: Width of the ROI.
-        roi_y: Height of the ROI.
-        trackid:
-        trackxlocation:
-        trackylocation:
-        tracktlocation:
+        imp (ImagePlus()): An ImagePlus() stack.
+        spots (list of dictionaries): The output of a getresults() function call.
+        outdir (path): The output directory path.
+        roi_x (int, optional): ROI width (pixels). Defaults to 150.
+        roi_y (int, optional): ROI height (pixels). Defaults to 150.
+        trackid (str, optional): Column name of Track identifiers. Defaults to "TRACK_ID".
+        trackxlocation (str, optional): Column name of spot x location. Defaults to "POSITION_X".
+        trackylocation (str, optional): Column name of spot y location. Defaults to "POSITION_Y".
+        tracktlocation (str, optional): Column name of spot time location. Defaults to "FRAME".
     """
 
-    # # Get the calibration of the input image and store the pixel dimensions and frame interval.
-    # calibration = imp.getCalibration()
-    # frame_interval = 1
-    # pixel_width = calibration.pixelWidth
-    # pixel_height = calibration.pixelHeight
-    # if (calibration.frameInterval > 0):
-    #     frame_interval = calibration.frameInterval
+    def _cropSingleTrack(ispots):
+        """Nested function to crop the spots of a single TRACK_ID.
 
+        Args:
+            ispots (list): List of getresults() dictionaries belonging to a single track.
+
+        Returns:
+            list: A list of ImagePlus stacks of the cropped timeframes.
+        """        
+        outstacks = []
+
+        for j in ispots:
+
+            # Extract all needed row values.
+            j_id = int(j[trackid])
+            j_x = int(j[trackxlocation] * xScaleMultiplier)
+            j_y = int(j[trackylocation] * yScaleMultiplier)
+            j_t = int(j[tracktlocation])
+
+            # Now set an ROI according to the track's xy position in the hyperstack.
+            imp.setRoi(j_x, j_y, roi_x, roi_y)  # upper left x, upper left y, roi x dimension, roi y dimension
+
+            # Optionally, set the correct time position in the stack. This provides cool feedback but is sloooow!
+            # imp.setPosition(1, 1, j_t)
+
+            # Crop the ROI on the corresponding timepoint and add to output stack.
+            crop = Duplicator().run(imp, 1, dims[2], 1, dims[3], j_t, j_t)  # firstC, lastC, firstZ, lastZ, firstT, lastT
+            outstacks.append(crop)
+        
+        return outstacks
+
+
+    # START OF MAIN FUNCTION.
     # Store the stack dimensions.
-    dims = imp.getDimensions()
-    # IJ.log("Original image dimensions:\n"
-    #        "width: {}\nheight:{}\nchannels: {}\nslices: {}\nframes: {}".format(width, height, nChannels, nSlices,
-                                                                               nFrames))
+    dims = imp.getDimensions() # width, height, nChannels, nSlices, nFrames
+    IJ.log("Dimensions width: {0}, height: {1}, nChannels: {2}, nSlices: {3}, nFrames: {4}.".format(
+        dims[0], dims[1], dims[2], dims[3], dims[4]))
+
+    # Get stack calibration and set the scale multipliers to correct for output in physical units vs. pixels.
+    cal = imp.getCalibration()
+    if cal.scaled():
+        xScaleMultiplier = dims[0]/cal.getX(dims[0])
+        yScaleMultiplier = dims[1]/cal.getY(dims[1])
+        IJ.log("Physical units to pixel scale: x = {}, y = {} pixels/unit\n".format(xScaleMultiplier, yScaleMultiplier))
+    else:
+        xScaleMultiplier = 1
+        yScaleMultiplier = 1
+        IJ.log("Image is not spatially calibrated. Make sure the input .csv isn't either!")
+        IJ.log("Physical units to pixel scale: x = {}, y = {} pixels/unit\n".format(xScaleMultiplier, yScaleMultiplier))
 
     # Add a black frame around the stack to ensure the cropped roi's are never out of view.
     expand_x = dims[0] + roi_x
     expand_y = dims[1] + roi_y
+    # This line could be replaced by ij.plugin.CanvasResizer(). 
+    # However, since that function takes ImageStacks, not ImagePlus, that just makes it more difficult for now.
     IJ.run(imp, "Canvas Size...", "width={} height={} position=Center zero".format(expand_x, expand_y))
 
-    # # Extract the column index of 'TRACK_ID' from the csv file.
-    # # The column name cannot be used directly to extract the column values.
-    # # The 'TRACK_ID' column is used to define individual tracks. We'll loop through these.
-    # track_id = results_table.getColumnIndex(trackid)
-    # track_list = results_table.getColumn(track_id).tolist()
-    # tracks = set(track_list)  # Yields a set of the individual TRACK_IDs from the list of points.
-    # tracks = list(tracks)  # Since we might want to subset the TRACK_IDs later on, convert it back to a list.
-    # nrows = results_table.size()
-    # overlay_out = ImageStack()
-    track_ids = set([ track[trackid] for track in tracks ])
+    # Retrieve all unique track ids. This is what we loop through.
+    track_ids = set([ track[trackid] for track in spots ])
+    track_ids = list(track_ids)
 
-    # Generate some useful output for debugging
-    IJ.log(
-        """
-        TRACK_ID column: {}
-        Individual TRACK_IDs {}
-        Calibration X: {}, Y: {}, T:{} 
-        """.format(track_id, tracks, pixel_width, pixel_height, frame_interval)
-    )
-
-    # 1: ----- MAIN LOOP -----
     # This loop loops through the unique set of TRACK_IDs from the results table.
-    for i in track_ids:
-        # out = ImageStack()
-        # out_list = []
-        # TODO: Finish here! This can be much easier, as in CropInvasions.py.
+    for i in track_ids[0:50]:
+        
+        # Extract all spots (rows) with TRACK_ID == i.
+        trackspots = [ spot for spot in spots if spot[trackid] == i ]
+        IJ.log ("TRACK_ID: {}/{}".format(int(i+1), len(track_ids))) # Monitor progress
 
+        # Crop the spot locations of the current TRACK_ID.
+        out = _cropSingleTrack(trackspots)
 
-
-
-
-        # 2: ----- FIRST SUBLOOP -----
-        # Since ImageJ has no sensible data wrangling package, this loop goes through the rows of the results table,
-        # and crops each point location for the current TRACK_ID.
-        for j in range(0, nrows):
-
-            j_id = results_table.getValue(trackid, j)
-            # If the current point is not part of a track, move on to the next.
-            if math.isnan(j_id):
-                break
-            j_id = int(j_id)
-
-            # IJ.log("Track ID on current row = {}\nTrack ID in current loop = {}".format(j_id, i))
-            if j_id == i:
-                j_x = int(results_table.getValue(trackxlocation, j) / pixel_width)  # fix for calibration
-                j_y = int(results_table.getValue(trackylocation, j) / pixel_height)  # fix for calibration
-                j_t = int(results_table.getValue(tracktlocation, j))
-                IJ.log("X: {}, Y: {}, T: {}".format(j_x, j_y, j_t))
-
-                # Now set an ROI according to the track's xy position in the hyperstack.
-                imp.setRoi(j_x, j_y,  # upper left x, upper left y
-                           roi_x, roi_y)  # roi x dimension, roi y dimension
-
-                # # Create an empty image for the track overlays.
-                # overlay = IJ.createHyperStack("track_overlay",
-                #                               width + roi_x,  # width
-                #                               height + roi_y,  # height
-                #                               1,  # channels
-                #                               1,  # slices
-                #                               1,  # frames
-                #                               24)
-                # # WindowManager.setTempCurrentImage(overlay)
-                # # ij.invert()
-                #
-                # # Copy to the overlay image.
-                imp.setPosition(1, 1, j_t)
-                # imp.copy()
-                # overlay.setRoi(j_x, j_y,  # upper left x, upper left y
-                #                roi_x, roi_y)  # roi x dimension, roi y dimension
-                # overlay.paste()
-                # # overlay.deleteRoi()
-                # # overlay.show()
-                # # outfile = os.path.join(output1, "TRACK_ID_{}_{}.tif".format(int(i), j_t))
-                # # IJ.saveAs(overlay, "Tiff", outfile)
-                # overlay = overlay.getProcessor()
-                # overlay_out.addSlice("track_overlay", overlay)
-
-                # Crop.
-                imp2 = Duplicator().run(imp,
-                                        1,  # firstC
-                                        nChannels,  # lastC
-                                        1,  # firstZ
-                                        nSlices,  # lastZ
-                                        j_t,  # firstT
-                                        j_t)  # lastT
-                # imp2.show()
-                imp2 = imp2.getProcessor()
-                out.addSlice("slice", imp2)
-
-        # Save the substack in the output directory
-        IJ.log("Save substack {}...".format(int(i)))
-        out = ImagePlus('tracked_point', out)
+        # Concatenate the frames into one ImagePlus and save.
+        out = Concatenator().run(out)
         outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(int(i)))
         IJ.saveAs(out, "Tiff", outfile)
 
-    # overlay_out = ImagePlus("track_overlay", overlay_out)
-    # overlay_out.show()
-    return
+    IJ.log("\nExecution croppoints() finished.")
 
 
 # The main loop, call wanted functions and change parameters.
 def main():
-    # Get the wanted output directory.
+
+    # Get the wanted output directory and prepare subdirectories for output.
     outdir = IJ.getDirectory("output directory")
 
-    # Check calibration
+    # Open the 'Track statistics.csv' input file and format as getresults() dictionary.
+    rt = opencsv()
+    rt = getresults(rt)
 
-    # Open the 'Spots in tracks statistics.csv' input file and run main crop function.
-    results_table = opencsv()
+    # Retrieve the current image as input (source) image.
     imp = WindowManager.getCurrentImage()
 
-    croppoints(imp, results_table,
-               outdir=outdir,
-               trackid="TRACK_ID",
-               trackxlocation="POSITION_X",
-               trackylocation="POSITION_Y",
-               tracktlocation="FRAME",
-               roi_x=150, roi_y=150)
+    cal = imp.getCalibration()
+    IJ.log("Calibration: {}".format(cal.scaled()))
+
+    # Run the main crop function on the source image.
+    croppoints(imp, spots=rt, outdir=outdir, roi_x=150, roi_y=150)
+
+    # Combine all output stacks into one movie.
+    combinestacks(outdir, height=8)
+ 
 
 
 # Execute main()
