@@ -14,6 +14,7 @@ import ij.plugin.MontageMaker as MontageMaker
 import ij.plugin.StackCombiner as StackCombiner
 import ij.plugin.Duplicator as Duplicator
 import ij.plugin.Concatenator as Concatenator
+import ij.plugin.CanvasResizer as CanvasResizer
 import os
 import math
 
@@ -174,7 +175,7 @@ def croppoints(imp, spots, outdir, roi_x=150, roi_y=150,
 
     Args:
         imp (ImagePlus()): An ImagePlus() stack.
-        spots (getresults()): The output of the getresults() function.
+        spots (list of dictionaries): The output of a getresults() function call.
         outdir (path): The output directory path.
         roi_x (int, optional): ROI width (pixels). Defaults to 150.
         roi_y (int, optional): ROI height (pixels). Defaults to 150.
@@ -185,64 +186,82 @@ def croppoints(imp, spots, outdir, roi_x=150, roi_y=150,
     """
 
     def _cropSingleTrack(ispots):
-        outstack = ImageStack()
-        outchannels = [] * dims[2]
+        """Nested function to crop the spots of a single TRACK_ID.
+
+        Args:
+            ispots (list): List of getresults() dictionaries belonging to a single track.
+
+        Returns:
+            list: A list of ImagePlus stacks of the cropped timeframes.
+        """        
+        outstacks = []
 
         for j in ispots:
 
             # Extract all needed row values.
             j_id = int(j[trackid])
-            j_x = int(j[trackxlocation] * 5.988) # TODO fix for calibration.
-            j_y = int(j[trackylocation] * 5.988) # TODO fix for calibration.
-            j_t = int(j[tracktlocation]) # TODO fix for calibration.
+            j_x = int(j[trackxlocation] * xScaleMultiplier)
+            j_y = int(j[trackylocation] * yScaleMultiplier)
+            j_t = int(j[tracktlocation])
 
             # Now set an ROI according to the track's xy position in the hyperstack.
             imp.setRoi(j_x, j_y, roi_x, roi_y)  # upper left x, upper left y, roi x dimension, roi y dimension
 
-            # Set the correct time position in the stack.
-            imp.setPosition(1, 1, j_t)
+            # Optionally, set the correct time position in the stack. This provides cool feedback but is sloooow!
+            # imp.setPosition(1, 1, j_t)
 
-            # And crop the ROI on the corresponding timepoint.
-            imp2 = Duplicator().run(imp, 1, dims[2], 1, dims[3], j_t, j_t)  # firstC, lastC, firstZ, lastZ, firstT, lastT
-
-            # Append this frame to the tracks output stack.
-            channels = ChannelSplitter.split(imp2)
-            channels = [ channel.getProcessor() for channel in channels ]
-            # TODO: finish fixing for nChannels
-            outstack.addSlice("slice", imp2)
+            # Crop the ROI on the corresponding timepoint and add to output stack.
+            crop = Duplicator().run(imp, 1, dims[2], 1, dims[3], j_t, j_t)  # firstC, lastC, firstZ, lastZ, firstT, lastT
+            outstacks.append(crop)
         
-        return outstack
+        return outstacks
 
 
     # START OF MAIN FUNCTION.
     # Store the stack dimensions.
     dims = imp.getDimensions() # width, height, nChannels, nSlices, nFrames
-    IJ.log("Dimensions width, height, nChannels, nSlices, nFrames: \n{}\n".format(dims))
+    IJ.log("Dimensions width: {0}, height: {1}, nChannels: {2}, nSlices: {3}, nFrames: {4}.".format(
+        dims[0], dims[1], dims[2], dims[3], dims[4]))
+
+    # Get stack calibration and set the scale multipliers to correct for output in physical units vs. pixels.
+    cal = imp.getCalibration()
+    if cal.scaled():
+        xScaleMultiplier = dims[0]/cal.getX(dims[0])
+        yScaleMultiplier = dims[1]/cal.getY(dims[1])
+        IJ.log("Physical units to pixel scale: x = {}, y = {} pixels/unit\n".format(xScaleMultiplier, yScaleMultiplier))
+    else:
+        xScaleMultiplier = 1
+        yScaleMultiplier = 1
+        IJ.log("Image is not spatially calibrated. Make sure the input .csv isn't either!")
+        IJ.log("Physical units to pixel scale: x = {}, y = {} pixels/unit\n".format(xScaleMultiplier, yScaleMultiplier))
 
     # Add a black frame around the stack to ensure the cropped roi's are never out of view.
     expand_x = dims[0] + roi_x
     expand_y = dims[1] + roi_y
+    # This line could be replaced by ij.plugin.CanvasResizer(). 
+    # However, since that function takes ImageStacks, not ImagePlus, that just makes it more difficult for now.
     IJ.run(imp, "Canvas Size...", "width={} height={} position=Center zero".format(expand_x, expand_y))
 
     # Retrieve all unique track ids. This is what we loop through.
     track_ids = set([ track[trackid] for track in spots ])
     track_ids = list(track_ids)
 
-    # 1: ----- MAIN LOOP -----
     # This loop loops through the unique set of TRACK_IDs from the results table.
-    for i in track_ids[0:5]:
+    for i in track_ids[0:50]:
         
         # Extract all spots (rows) with TRACK_ID == i.
         trackspots = [ spot for spot in spots if spot[trackid] == i ]
-        IJ.log ("TRACK_ID: {}/{}".format(int(i+1), len(track_ids))) # Some feedback
+        IJ.log ("TRACK_ID: {}/{}".format(int(i+1), len(track_ids))) # Monitor progress
 
-        # Crop the spots of the current TRACK_ID.
+        # Crop the spot locations of the current TRACK_ID.
         out = _cropSingleTrack(trackspots)
 
-        # Save the substack in the output directory
-        out = ImagePlus('tracked_point', out)
+        # Concatenate the frames into one ImagePlus and save.
+        out = Concatenator().run(out)
         outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(int(i)))
         IJ.saveAs(out, "Tiff", outfile)
+
+    IJ.log("\nExecution croppoints() finished.")
 
 
 # The main loop, call wanted functions and change parameters.
@@ -258,11 +277,15 @@ def main():
     # Retrieve the current image as input (source) image.
     imp = WindowManager.getCurrentImage()
 
+    cal = imp.getCalibration()
+    IJ.log("Calibration: {}".format(cal.scaled()))
+
     # Run the main crop function on the source image.
     croppoints(imp, spots=rt, outdir=outdir, roi_x=150, roi_y=150)
 
     # Combine all output stacks into one movie.
-    # combinestacks(outdir, height=8) 
+    combinestacks(outdir, height=8)
+ 
 
 
 # Execute main()
