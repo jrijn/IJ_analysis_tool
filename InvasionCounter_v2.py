@@ -32,7 +32,7 @@ def readdirfiles(directory):
 
 
 def saveresults(dir, name):
-    outfile = os.path.join(dir, "{}.csv".format(name))
+    outfile = os.path.join(dir, "{}.csv".format(name))    
     res = ResultsTable.getResultsTable()
     ResultsTable.save(res, outfile)
     ResultsTable.reset(res)
@@ -93,10 +93,10 @@ def main():
     # Prepare directory tree for output.
     indir = IJ.getDirectory("input directory")
     outdir = IJ.getDirectory(".csv output directory")
-    dapidir = os.path.join(outdir, "Channel1")
-    gfpdir = os.path.join(outdir, "Channel2")
-    rufdir = os.path.join(outdir, "Channel3")
-    rfpdir = os.path.join(outdir, "Channel4")
+    c1dir = os.path.join(outdir, "Channel1")
+    c2dir = os.path.join(outdir, "Channel2")
+    c3dir = os.path.join(outdir, "Channel3")
+    c4dir = os.path.join(outdir, "Channel4")
     channelsdir = os.path.join(outdir, "Channels")
     if not os.path.isdir(c1dir):
         os.mkdir(c1dir)
@@ -122,10 +122,13 @@ def main():
 
         IJ.log("File: {}/{}".format(files.index(file)+1, len(files)))
 
-        if file.endswith('ome.tif') or file.endswith('ome.tiff'):
+        if file.endswith('.tif'):
 
             # Open .tiff file as ImagePlus.
-            imp = Opener().openImage(indir, imfile)
+            imp = stackprocessor(file,
+                                   nChannels=4,
+                                   nSlices=7,
+                                   nFrames=1)
             channels = ChannelSplitter.split(imp)
             name = imp.getTitle()
             
