@@ -32,7 +32,8 @@ def readdirfiles(directory):
 
 
 def saveresults(dir, name):
-    outfile = os.path.join(dir, "{}.csv".format(name))    
+    outfile = os.path.join(dir, "{}.csv".format(name))
+    
     res = ResultsTable.getResultsTable()
     ResultsTable.save(res, outfile)
     ResultsTable.reset(res)
@@ -146,7 +147,7 @@ def main():
                                threshMethod="Triangle",
                                subtractBackground=True,
                                watershed=True,
-                               minSize=3.00,
+                               minSize=0.00,
                                maxSize=100,
                                minCirc=0.00,
                                maxCirc=1.00)
@@ -156,7 +157,7 @@ def main():
                                threshMethod="RenyiEntropy",
                                subtractBackground=False,
                                watershed=False,
-                               minSize=0.20,
+                               minSize=0.00,
                                maxSize=30.00,
                                minCirc=0.00,
                                maxCirc=1.00)
@@ -164,7 +165,9 @@ def main():
             # Settings for channel3 threshold.
             c3 = countobjects(channels[2], c3Results,
                                threshMethod="RenyiEntropy",
-                               minSize=2.00,
+                               subtractBackground=False,
+                               watershed=False,
+                               minSize=0.00,
                                maxSize=30.00,
                                minCirc=0.20,
                                maxCirc=1.00)
@@ -172,8 +175,8 @@ def main():
             # Settings for channel4 threshold.
             c4 = countobjects(channels[3], c4Results,
                                threshMethod="RenyiEntropy",
-                               subtractBackground=False,
-                               watershed=True,
+                               subtractBackground=True,
+                               watershed=False,
                                minSize=0.20,
                                maxSize=30.00,
                                minCirc=0.00,
