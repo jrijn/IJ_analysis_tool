@@ -169,7 +169,7 @@ def main():
                                watershed=False,
                                minSize=0.00,
                                maxSize=30.00,
-                               minCirc=0.20,
+                               minCirc=0.00,
                                maxCirc=1.00)
 
             # Settings for channel4 threshold.
@@ -178,7 +178,7 @@ def main():
                                subtractBackground=True,
                                watershed=False,
                                minSize=0.20,
-                               maxSize=30.00,
+                               maxSize=100.00,
                                minCirc=0.00,
                                maxCirc=1.00)
 
@@ -195,10 +195,10 @@ def main():
             IJ.saveAs(c4.flatten(), "Tiff", outfileC4)
 
     # Show results tables.
-    c1Results.show("channel1")
-    c2Results.show("channel2")
-    c3Results.show("channel3")
-    c4Results.show("channel4")
+#    c1Results.show("channel1")
+#    c2Results.show("channel2")
+#    c3Results.show("channel3")
+#    c4Results.show("channel4")
 
     # Prepare results table filenames.
     c1out = os.path.join(outdir, "channel1.csv")
