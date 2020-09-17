@@ -33,6 +33,7 @@ def readdirfiles(directory):
 
 def saveresults(dir, name):
     outfile = os.path.join(dir, "{}.csv".format(name))
+    
     res = ResultsTable.getResultsTable()
     ResultsTable.save(res, outfile)
     ResultsTable.reset(res)
@@ -93,10 +94,10 @@ def main():
     # Prepare directory tree for output.
     indir = IJ.getDirectory("input directory")
     outdir = IJ.getDirectory(".csv output directory")
-    dapidir = os.path.join(outdir, "Channel1")
-    gfpdir = os.path.join(outdir, "Channel2")
-    rufdir = os.path.join(outdir, "Channel3")
-    rfpdir = os.path.join(outdir, "Channel4")
+    c1dir = os.path.join(outdir, "Channel1")
+    c2dir = os.path.join(outdir, "Channel2")
+    c3dir = os.path.join(outdir, "Channel3")
+    c4dir = os.path.join(outdir, "Channel4")
     channelsdir = os.path.join(outdir, "Channels")
     if not os.path.isdir(c1dir):
         os.mkdir(c1dir)
@@ -122,10 +123,13 @@ def main():
 
         IJ.log("File: {}/{}".format(files.index(file)+1, len(files)))
 
-        if file.endswith('ome.tif') or file.endswith('ome.tiff'):
+        if file.endswith('.tif'):
 
             # Open .tiff file as ImagePlus.
-            imp = Opener().openImage(indir, imfile)
+            imp = stackprocessor(file,
+                                   nChannels=4,
+                                   nSlices=7,
+                                   nFrames=1)
             channels = ChannelSplitter.split(imp)
             name = imp.getTitle()
             
@@ -143,7 +147,7 @@ def main():
                                threshMethod="Triangle",
                                subtractBackground=True,
                                watershed=True,
-                               minSize=3.00,
+                               minSize=0.00,
                                maxSize=100,
                                minCirc=0.00,
                                maxCirc=1.00)
@@ -153,7 +157,7 @@ def main():
                                threshMethod="RenyiEntropy",
                                subtractBackground=False,
                                watershed=False,
-                               minSize=0.20,
+                               minSize=0.00,
                                maxSize=30.00,
                                minCirc=0.00,
                                maxCirc=1.00)
@@ -161,18 +165,20 @@ def main():
             # Settings for channel3 threshold.
             c3 = countobjects(channels[2], c3Results,
                                threshMethod="RenyiEntropy",
-                               minSize=2.00,
+                               subtractBackground=False,
+                               watershed=False,
+                               minSize=0.00,
                                maxSize=30.00,
-                               minCirc=0.20,
+                               minCirc=0.00,
                                maxCirc=1.00)
 
             # Settings for channel4 threshold.
             c4 = countobjects(channels[3], c4Results,
                                threshMethod="RenyiEntropy",
-                               subtractBackground=False,
-                               watershed=True,
+                               subtractBackground=True,
+                               watershed=False,
                                minSize=0.20,
-                               maxSize=30.00,
+                               maxSize=100.00,
                                minCirc=0.00,
                                maxCirc=1.00)
 
@@ -189,10 +195,10 @@ def main():
             IJ.saveAs(c4.flatten(), "Tiff", outfileC4)
 
     # Show results tables.
-    c1Results.show("channel1")
-    c2Results.show("channel2")
-    c3Results.show("channel3")
-    c4Results.show("channel4")
+#    c1Results.show("channel1")
+#    c2Results.show("channel2")
+#    c3Results.show("channel3")
+#    c4Results.show("channel4")
 
     # Prepare results table filenames.
     c1out = os.path.join(outdir, "channel1.csv")
