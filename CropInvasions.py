@@ -77,7 +77,7 @@ def getresults(rt):
 def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
             trackx="TRACK_X_LOCATION", tracky="TRACK_Y_LOCATION",
             trackstart="TRACK_START", trackstop="TRACK_STOP",
-            roi_x=150, roi_y=150):
+            roi_x=150, roi_y=150, minduration=None):
     """Function cropping ROIs from an ImagePlus stack based on a ResultsTable object.
 
     This function crops square ROIs from a hyperstack based on locations defined in the ResultsTable.
@@ -96,6 +96,7 @@ def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
         trackstop: Defaults to "TRACK_STOP".
         roi_x: Width of the ROI.
         roi_y: Height of the ROI.
+        minduration (int): Set a minimum duration threshold. Defaults to 'None'.
     """
 
     # Loop through all the tracks, extract the track position, set an ROI and crop the hyperstack.
@@ -115,14 +116,22 @@ def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
         # Retrieve image dimensions.
         width, height, nChannels, nSlices, nFrames = imp.getDimensions()
 
-        # And then crop (duplicate, actually) this ROI for the track's time duration.
-        IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(i_id+1, int(len(tracks))))
-        # Duplicator().run(firstC, lastC, firstZ, lastZ, firstT, lastT)
-        imp2 = Duplicator().run(imp, 1, nChannels, 1, nSlices, i_start, i_stop)  
+        # Optionally set a minimum duration.
+        i_duration = i_stop - i_start
+        allowCrop = True
+        if minduration != None: allowCrop = i_duration > minduration
 
-        # Save the substack in the output directory
-        outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(i_id))
-        IJ.saveAs(imp2, "Tiff", outfile)
+        # And then crop (duplicate, actually) this ROI for the track's time duration.
+        if allowCrop:
+            IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(i_id+1, int(len(tracks))))
+            # Duplicator().run(firstC, lastC, firstZ, lastZ, firstT, lastT)
+            imp2 = Duplicator().run(imp, 1, nChannels, 1, nSlices, i_start, i_stop)  
+
+            # Save the substack in the output directory
+            outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(i_id))
+            IJ.saveAs(imp2, "Tiff", outfile)
+        else: 
+            IJ.log("Image with TRACK_INDEX: {}/{} does not meet minimum duration requirement.".format(i_id+1, int(len(tracks))))
 
 
 def chunks(seq, num):
@@ -244,7 +253,7 @@ def main():
     imp = WindowManager.getCurrentImage()
 
     # Run the main crop function on the source image.
-    croproi(imp, tracks=rt, outdir=outdir, roi_x=150, roi_y=150)
+    croproi(imp, tracks=rt, outdir=outdir, roi_x=150, roi_y=150, minduration=6)
 
     # Combine all output stacks into one movie.
     combinestacks(outdir, height=8)
