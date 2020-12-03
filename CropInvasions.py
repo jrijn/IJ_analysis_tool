@@ -5,6 +5,7 @@ import ij.ImageStack as ImageStack
 import ij.WindowManager as WindowManager
 import ij.measure.ResultsTable as ResultsTable
 import ij.measure.Measurements as Measurements
+import ij.measure.Calibration as Calibration
 import ij.plugin.ChannelSplitter as ChannelSplitter
 import ij.plugin.HyperStackConverter as HyperStackConverter
 import ij.plugin.ZProjector as ZProjector
@@ -74,7 +75,7 @@ def getresults(rt):
         IJ.log("Something in getresults() went wrong: {}".format(type(ex).__name__, ex.args))
 
 
-def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
+def croproi(imp, tracks, outdir, trackid="TRACK_ID",
             trackx="TRACK_X_LOCATION", tracky="TRACK_Y_LOCATION",
             trackstart="TRACK_START", trackstop="TRACK_STOP",
             roi_x=150, roi_y=150, minduration=None):
@@ -83,13 +84,13 @@ def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
     This function crops square ROIs from a hyperstack based on locations defined in the ResultsTable.
     The ResultsTable should, however make sense. The following headings are required:
 
-    "TRACK_INDEX", "TRACK_X_LOCATION", "TRACK_Y_LOCATION", "TRACK_START", "TRACK_STOP"
+    "TRACK_ID", "TRACK_X_LOCATION", "TRACK_Y_LOCATION", "TRACK_START", "TRACK_STOP"
 
     Args:
         imp: An ImagePlus hyperstack (timelapse).
         tracks: A getresults(ResultsTable) object (from Track statistics.csv) with the proper column names.
         outdir: The primary output directory.
-        trackindex: A unique track identifier. Defaults to "TRACK_INDEX"
+        trackid: A unique track identifier. Defaults to "TRACK_ID"
         trackxlocation: Defaults to "TRACK_X_LOCATION".
         trackylocation: Defaults to "TRACK_Y_LOCATION".
         trackstart: Defaults to "TRACK_START".
@@ -99,15 +100,17 @@ def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
         minduration (int): Set a minimum duration threshold. Defaults to 'None'.
     """
 
+    cal = imp.getCalibration()
+
     # Loop through all the tracks, extract the track position, set an ROI and crop the hyperstack.
     for i in tracks:  # This loops through all tracks. Use a custom 'tracks[0:5]' to test and save time!
 
         # Extract all needed row values.
-        i_id = int(i[trackindex])
-        i_x = int(i[trackx] * 5.988) # TODO fix for calibration.
-        i_y = int(i[tracky] * 5.988) # TODO fix for calibration.
-        i_start = int(i[trackstart] / 15)
-        i_stop = int(i[trackstop] / 15)
+        i_id = int(i[trackid])
+        i_x = int(i[trackx] * 1/cal.pixelWidth)
+        i_y = int(i[tracky] * 1/cal.pixelHeight)
+        i_start = int(i[trackstart] / cal.frameInterval)
+        i_stop = int(i[trackstop] / cal.frameInterval)
 
         # Now set an ROI according to the track's xy position in the hyperstack.
         imp.setRoi(i_x - roi_x / 2, i_y - roi_y / 2,  # upper left x, upper left y
@@ -123,7 +126,7 @@ def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
 
         # And then crop (duplicate, actually) this ROI for the track's time duration.
         if allowCrop:
-            IJ.log("Cropping image with TRACK_INDEX: {}/{}".format(i_id+1, int(len(tracks))))
+            IJ.log("Cropping TRACK_ID: {}/{}".format(i_id+1, int(len(tracks))))
             # Duplicator().run(firstC, lastC, firstZ, lastZ, firstT, lastT)
             imp2 = Duplicator().run(imp, 1, nChannels, 1, nSlices, i_start, i_stop)  
 
@@ -131,7 +134,7 @@ def croproi(imp, tracks, outdir, trackindex="TRACK_INDEX",
             outfile = os.path.join(outdir, "TRACK_ID_{}.tif".format(i_id))
             IJ.saveAs(imp2, "Tiff", outfile)
         else: 
-            IJ.log("Image with TRACK_INDEX: {}/{} does not meet minimum duration requirement.".format(i_id+1, int(len(tracks))))
+            IJ.log("Image with TRACK_ID: {}/{} does not meet minimum duration requirement.".format(i_id+1, int(len(tracks))))
 
 
 def chunks(seq, num):
@@ -256,7 +259,7 @@ def main():
     croproi(imp, tracks=rt, outdir=outdir, roi_x=150, roi_y=150, minduration=6)
 
     # Combine all output stacks into one movie.
-    combinestacks(outdir, height=8)
+#    combinestacks(outdir, height=8)
 
 
 # Execute main()

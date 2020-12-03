@@ -115,3 +115,4 @@ def main():
 #	IJ.log("Finished")
 
 main()
+IJ.log("--- Finished ---")
