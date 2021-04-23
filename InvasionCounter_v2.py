@@ -7,6 +7,7 @@ import ij.plugin.ChannelSplitter as ChannelSplitter
 import ij.plugin.HyperStackConverter as HyperStackConverter
 import ij.plugin.ZProjector as ZProjector
 import ij.plugin.filter.ParticleAnalyzer as ParticleAnalyzer
+import ij.plugin.ImageCalculator as ImageCalculator
 
 import os
 import math
@@ -126,10 +127,12 @@ def main():
         if file.endswith('.tif'):
 
             # Open .tiff file as ImagePlus.
-            imp = stackprocessor(file,
-                                   nChannels=4,
-                                   nSlices=7,
-                                   nFrames=1)
+            imp = Opener().openImage(file)
+            imp = ZProjector.run(imp, "max")
+            # imp = stackprocessor(file,
+            #                        nChannels=4,
+            #                        nSlices=7,
+            #                        nFrames=1)
             channels = ChannelSplitter.split(imp)
             name = imp.getTitle()
             
@@ -141,6 +144,14 @@ def main():
                 jpgoutfile = os.path.join(channelsdir, "{}.jpg".format(jpgname))
                 IJ.saveAs(channel.flatten(), "Jpeg", jpgoutfile)
                 IJ.run(channel, "Invert", "")
+
+            # OPTIONAL - Perform any other operations (e.g. crossexcitation compensation tasks) before object count.
+            c2name = channels[2].getTitle()
+            cal = channels[2].getCalibration()
+            channels[2] = ImagePlus(c2name,
+                ImageCalculator().run("divide create 32-bit", channels[2], channels[3]).getProcessor() # This removes AF647 bleed-through
+            )
+            channels[2].setCalibration(cal)
 
             # Settings for channel1 threshold.
             c1 = countobjects(channels[0], c1Results,
@@ -155,7 +166,7 @@ def main():
             # Settings for channel2 threshold.
             c2 = countobjects(channels[1], c2Results,
                                threshMethod="RenyiEntropy",
-                               subtractBackground=False,
+                               subtractBackground=True,
                                watershed=False,
                                minSize=0.00,
                                maxSize=30.00,
@@ -165,7 +176,7 @@ def main():
             # Settings for channel3 threshold.
             c3 = countobjects(channels[2], c3Results,
                                threshMethod="RenyiEntropy",
-                               subtractBackground=False,
+                               subtractBackground=True,
                                watershed=False,
                                minSize=0.00,
                                maxSize=30.00,
